@@ -1,0 +1,12 @@
+private_payload/
+handoff/
+extracted/
+*.tar
+*.tar.gz
+*.key
+*.pem
+id_ed25519*
+__pycache__/
+*.pyc
+.venv/
+
