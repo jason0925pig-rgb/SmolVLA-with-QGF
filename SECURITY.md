@@ -1,17 +1,11 @@
-# Security Policy
+# Security policy
 
-The encrypted handoff package is the only place where project-internal notes and
-server paths should live. Credentials must never be committed, even inside the
-encrypted package unless there is no safer transfer mechanism.
+This repository contains model and algorithm source only. Do not commit:
 
-This snapshot deliberately excludes:
+- SSH private keys, passwords, tokens, cookies, or login instructions;
+- company GPU-server addresses, accounts, topology, paths, or process details;
+- model checkpoints, datasets, raw rollouts, or private experiment logs;
+- files belonging to other users or shared infrastructure.
 
-- SSH private keys and SSH login guides containing credentials
-- sudo passwords, API tokens, cookies, and model-registry tokens
-- other users' files, logs, commands, and process details
-- large model checkpoints, rollout tensors, and raw videos
-
-The package uses AES-256-GCM with a key derived from the passphrase by Scrypt.
-AES-GCM authenticates the ciphertext: a wrong password or modified package fails
-before extraction.
-
+Keep access configuration in the local SSH directory and exchange credentials
+through the company-approved secure channel.

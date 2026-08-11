@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ENV_PREFIX="${ENV_PREFIX:-$ROOT/.venv-a800-py312}"
+ENV_PREFIX="${ENV_PREFIX:-$ROOT/.venv}"
 PY="${PYTHON_BIN:-$ENV_PREFIX/bin/python}"
 TASK="${TASK:-libero_spatial}"
 TASK_IDS="${TASK_IDS:-[3]}"

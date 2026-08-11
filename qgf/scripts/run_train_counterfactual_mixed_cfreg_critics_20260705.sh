@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /home/zwwl_user3/World_Model/repos/guided-action-flow
-source .venv-a800-py312/bin/activate
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT}"
+source "${ENV_PREFIX:-${ROOT}/.venv}/bin/activate"
 
 export HF_ENDPOINT=https://hf-mirror.com
 export WANDB_MODE=disabled
-export PYTHONPATH=/home/zwwl_user3/World_Model/repos/guided-action-flow/src:/home/zwwl_user3/World_Model/repos/guided-action-flow/third_party/lerobot/src
-export CUDA_VISIBLE_DEVICES=0
+export PYTHONPATH="${ROOT}/src:${ROOT}/third_party/lerobot/src${PYTHONPATH:+:${PYTHONPATH}}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 CF_FILE=runs/counterfactual_multitask_spatial0to4_seed6100_ep4_h50_20260705/counterfactual_samples.pt
 ROLLOUT_DIR=runs/exp_multitask_spatial0to4_ep30_seed9000_raw

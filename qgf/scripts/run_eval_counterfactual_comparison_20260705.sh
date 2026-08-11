@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /home/zwwl_user3/World_Model/repos/guided-action-flow
-source .venv-a800-py312/bin/activate
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT}"
+source "${ENV_PREFIX:-${ROOT}/.venv}/bin/activate"
 
 export HF_ENDPOINT=https://hf-mirror.com
 export MUJOCO_GL=egl
 export WANDB_MODE=disabled
-export LIBERO_CONFIG_PATH=/home/zwwl_user3/World_Model/repos/guided-action-flow/.libero_configs/vanilla
-export PYTHONPATH=/home/zwwl_user3/World_Model/repos/guided-action-flow/src:/home/zwwl_user3/World_Model/repos/guided-action-flow/third_party/lerobot/src
-export CUDA_VISIBLE_DEVICES=0
+export LIBERO_CONFIG_PATH="${LIBERO_CONFIG_PATH:-${ROOT}/.libero_configs/vanilla}"
+export PYTHONPATH="${ROOT}/src:${ROOT}/third_party/lerobot/src${PYTHONPATH:+:${PYTHONPATH}}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
-POLICY=/home/zwwl_user3/World_Model/repos/guided-action-flow/checkpoints/smolvla_libero
+POLICY="${POLICY_PATH:-${ROOT}/checkpoints/smolvla_libero}"
 TASK=libero_spatial
 TASK_IDS="[0,1,2,3,4]"
 N_EPISODES=10
 SEED=7200
 
-ORIG0=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/paper_repro_20260704_critic_train200_best_seed0/critic.pt
-ORIG1=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/paper_repro_20260704_critic_train200_best_seed1/critic.pt
-ORIG2=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/paper_repro_20260704_critic_train200_best_seed2/critic.pt
+ORIG0="${ROOT}/runs/paper_repro_20260704_critic_train200_best_seed0/critic.pt"
+ORIG1="${ROOT}/runs/paper_repro_20260704_critic_train200_best_seed1/critic.pt"
+ORIG2="${ROOT}/runs/paper_repro_20260704_critic_train200_best_seed2/critic.pt"
 
-CF0=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed0_20260705/critic.pt
-CF1=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed1_20260705/critic.pt
-CF2=/home/zwwl_user3/World_Model/repos/guided-action-flow/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed2_20260705/critic.pt
+CF0="${ROOT}/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed0_20260705/critic.pt"
+CF1="${ROOT}/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed1_20260705/critic.pt"
+CF2="${ROOT}/runs/counterfactual_mixed_spatial0to4_h50_rw0p2_seed2_20260705/critic.pt"
 
 python scripts/eval_policy.py \
   --policy-path "${POLICY}" \

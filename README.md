@@ -16,7 +16,6 @@ experiments. Hardware teleoperation and dataset capture live separately in
   configuration. The ROS2 controller implementation remains in the teleop repo.
 - `docs/`: baseline training/deployment results and QGF documentation.
 - `experiments/`: LIBERO experiment clients, concise reports, and visual audits.
-- `SmolVLA_QGF_Handoff_2026-07-21.qgfpack`: legacy encrypted research snapshot.
 
 ## Armstrong dependency boundary
 
@@ -52,9 +51,6 @@ passes the hardware checks and enters `ARM`, followed later by `MOVE`.
 ## Data and security
 
 Do not commit datasets, checkpoints, SSH keys, tokens, virtual environments,
-runtime outputs, or extracted private handoffs. These paths and common model
+runtime outputs, or server access material. These paths and common model
 weight formats are ignored. Keep large artifacts on the designated SSD/model
 storage and record their checksums and paths in documentation.
-
-See [`docs/LEGACY_ENCRYPTED_HANDOFF.md`](docs/LEGACY_ENCRYPTED_HANDOFF.md) for
-the older encrypted snapshot.
