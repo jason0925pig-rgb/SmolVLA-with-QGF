@@ -9,6 +9,7 @@ import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.signals import SignalHandlerOptions
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from lerobot.async_inference.configs import PolicyServerConfig
@@ -27,7 +28,10 @@ class TelemetryPolicyServer(PolicyServer):
     def __init__(self, config: PolicyServerConfig):
         super().__init__(config)
         if not rclpy.ok():
-            rclpy.init(args=None)
+            # Keep SIGINT/SIGTERM under the gRPC main process.  Otherwise
+            # rclpy consumes the signal, shuts down only the ROS executor and
+            # leaves server.wait_for_termination() alive as a stale process.
+            rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._telemetry_node = Node("smolvla_policy_chunk_telemetry")
         qos = QoSProfile(
             depth=10,
@@ -90,7 +94,10 @@ def serve(config: PolicyServerConfig) -> None:
     )
     try:
         server.wait_for_termination()
+    except KeyboardInterrupt:
+        server_impl.logger.info("Telemetry policy server interrupted")
     finally:
+        server.stop(grace=1.0)
         server_impl.stop()
 
 
