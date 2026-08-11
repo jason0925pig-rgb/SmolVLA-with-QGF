@@ -1,7 +1,5 @@
 """LeRobot policy server that passively publishes pre-postprocessor chunks."""
 
-from __future__ import annotations
-
 import threading
 from concurrent import futures
 
