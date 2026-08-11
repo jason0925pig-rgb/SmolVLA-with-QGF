@@ -10,10 +10,10 @@ import numpy as np
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, String
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool, Trigger
 
 from lerobot.robots.robot import Robot
 
@@ -85,6 +85,9 @@ class ArmstrongRos2(Robot):
         self._completion_initial_joints: tuple[float, ...] | None = None
         self._completion_home_joints = tuple(config.completion_home_joints)
         self._rollout_end_logged = False
+        self._episode_reset_callback = None
+        self._latest_policy_observation_timestep = -1
+        self._current_policy_action_timestep = -1
         self._owns_rclpy_context = False
         self._guard_config = PolicySafetyConfig(
             task_lower=tuple(config.task_lower),
@@ -168,6 +171,34 @@ class ArmstrongRos2(Robot):
     def calibrate(self) -> None:
         return None
 
+    def set_episode_reset_callback(self, callback: Any) -> None:
+        self._episode_reset_callback = callback
+
+    def set_policy_action_timestep(self, timestep: int) -> None:
+        self._current_policy_action_timestep = int(timestep)
+
+    def _reset_episode_service(
+        self, request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        del request
+        if self._action_enabled:
+            response.success = False
+            response.message = "disable the policy action gate before resetting an episode"
+            return response
+        if self._episode_reset_callback is None:
+            response.success = False
+            response.message = "async policy queue reset callback is not registered"
+            return response
+        try:
+            self._episode_reset_callback()
+        except Exception as exc:
+            response.success = False
+            response.message = f"episode queue reset failed: {exc}"
+            return response
+        response.success = True
+        response.message = "policy action queue cleared for the next episode"
+        return response
+
     def configure(self) -> None:
         return None
 
@@ -198,6 +229,14 @@ class ArmstrongRos2(Robot):
         self._guarded_policy_action_pub = self._node.create_publisher(
             JointState, "/smolvla/guarded_policy_action", 10
         )
+        telemetry_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._policy_observation_pub = self._node.create_publisher(
+            JointState, "/smolvla/policy_observation_state", telemetry_qos
+        )
         self._node.create_subscription(
             JointState, self.config.joint_state_topic, self._joint_callback, 10
         )
@@ -226,6 +265,9 @@ class ArmstrongRos2(Robot):
             qos_profile_sensor_data,
         )
         self._node.create_service(SetBool, self.config.enable_service, self._set_enabled)
+        self._node.create_service(
+            Trigger, "/smolvla/reset_episode", self._reset_episode_service
+        )
         self._node.create_timer(0.5, self._publish_status)
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
@@ -546,9 +588,30 @@ class ArmstrongRos2(Robot):
             return
         message = JointState()
         message.header.stamp = self._node.get_clock().now().to_msg()
+        message.header.frame_id = str(self._current_policy_action_timestep)
         message.name = [*JOINT_NAMES, GRIPPER_NAME]
         message.position = [float(value) for value in values]
         publisher.publish(message)
+
+    def publish_policy_observation(
+        self, timestep: int, observation: dict[str, Any]
+    ) -> None:
+        """Publish the exact proprioceptive state paired with a policy request."""
+        if self._node is None:
+            return
+        try:
+            values = [
+                float(observation[name]) for name in (*JOINT_NAMES, GRIPPER_NAME)
+            ]
+        except (KeyError, TypeError, ValueError):
+            return
+        message = JointState()
+        message.header.stamp = self._node.get_clock().now().to_msg()
+        message.header.frame_id = str(int(timestep))
+        message.name = [*JOINT_NAMES, GRIPPER_NAME]
+        message.position = values
+        self._policy_observation_pub.publish(message)
+        self._latest_policy_observation_timestep = int(timestep)
 
     def _update_task_completion(
         self,

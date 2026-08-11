@@ -15,8 +15,12 @@ Q-GuidedFlow 的离线 Critic 数据基本单位是转移：
 ```text
 episode_000000/
 ├── transitions.parquet
+├── normalized_policy_chunks.parquet
+├── policy_observations.parquet
 ├── chest.mp4
 ├── wrist_right.mp4
+├── chest.mjpeg
+├── wrist_right.mjpeg
 ├── episode_metadata.json
 ├── capture_summary.json
 ├── launcher_result.json
@@ -28,13 +32,25 @@ episode_000000/
 
 - `state` / `next_state`：七轴弧度和夹爪闭合量；
 - `action_policy`：SmolVLA 原始目标；
+- `policy_action_timestep`：该动作在 LeRobot 异步动作队列中的真实执行序号；
 - `action_guarded`：通过安全边界和夹爪状态机后的目标；
 - `action_executed`：底层已接受的机械臂、夹爪命令；
 - `reward/success/terminated/truncated/done`；
 - 两个视频的帧号与时间戳；
 - task prompt 和夹爪接触状态。
 
-动作 chunk 可在训练时用连续转移重建。论文单任务实验的 Critic 使用 5 步 action chunk；SmolVLA 的 50 步推理队列不等于 Critic 必须使用 50 步输入。
+`normalized_policy_chunks.parquet` 直接保存 SmolVLA
+`predict_action_chunk()` 在 postprocessor 之前的归一化输出，供 QGF 在模型动作空间训练与求梯度。`transitions.parquet` 中的动作则是发送到真机控制链的物理单位目标，两者不能混为一谈。
+
+`policy_observations.parquet` 保存每次向策略服务器发请求时的七轴、夹爪、时间戳及两路相机帧号。它与 normalized chunk 都带有 `observation_timestep`，必须用这个字段连接，不能仅按文件行号或墙钟时间猜测对应关系。
+
+异步执行可能只消费一个 50 步预测块的一部分，随后就被更新的块覆盖。因此 IQL 训练的行为动作序列应按 `policy_action_timestep` 和实际执行顺序重建，再用冻结 checkpoint 的 processor 转回归一化空间；不能假定每个预测的 50 步都完整执行过。
+
+两份 `.mjpeg` 是长度前缀的原始 ROS JPEG 档案，记录格式为重复的
+`<uint64 little-endian timestamp_ns><uint32 little-endian jpeg_size><jpeg bytes>`。
+它们避免 MP4 二次压缩，后续可以用冻结的 SmolVLA/VLM 重新计算两路 RGB visual features。MP4 主要用于快速检查和人工复核。
+
+论文 OGBench 实验使用较短 action chunk；学长的 `guided-action-flow` SmolVLA 实现则明确以 50 步完整 chunk 训练和引导。本采集器同时保存逐步 transition 和 postprocessor 前的完整 normalized chunk，因此两种 horizon 都能构造，当前 SmolVLA 真机实验默认按 50 步接口。
 
 ## 需要采多少条
 
@@ -66,16 +82,18 @@ cd E:\AAA__Github_Project\SmolVLA-with-QGF
   -Task "把矿泉水放进纸箱里。"
 ```
 
-每轮流程：
+整场只初始化一次：
 
-1. 启动被动记录器，此时不控制机器人；
-2. 按现有安全启动器提示输入 `ARM`、`MOVE`；
-3. 自动完成回原位，或输入 `STOP` / Ctrl+C 结束；
-4. 输入 `S` 保存为成功、`F` 保存为失败、`D` 作废并物理删除；
-5. 程序自动开始下一轮，保留数据的编号始终连续。
+1. 启动模型、两路相机、控制节点，只输入一次 `ARM` 和 `MOVE`；
+2. 每轮自动完成回原位，或输入 `END` 正常结束并进入标签环节；
+3. 输入 `S` 保存成功、`F` 保存失败、`D` 作废并物理删除；
+4. 重置瓶子和箱子，按 Enter 开始下一轮，不重新加载模型、不重新上电；
+5. 只有完成目标数量、主动退出整场或异常安全停止时，才统一退出伺服、解除使能并下电。
 
-启动失败的轮次会自动删除且不占编号。只有明确输入 `S` 或 `F` 才进入正式数据集。
+Ctrl+C、`ABORT`、实体急停、保护停、控制器错误、策略门异常关闭或 client 崩溃都会删除当前轮的 MP4、精确 JPEG 档案、Parquet 前的原始样本和 staging 目录，然后关闭整套系统。异常轮次不占编号。只有明确输入 `S` 或 `F` 才进入正式数据集。
 
 ## 标签限制
 
-当前 reward 是 episode 级稀疏奖励：成功轨迹最后一步为 1，其余为 0；失败轨迹全为 0。它足够建立第一版 IQL/QGF 接口，但样本效率不高。后续若加入“接近瓶子、稳定抓住、移动到箱上方、释放”等阶段标签或自动奖励，Critic 会更容易学习。
+当前 reward 是 episode 级稀疏奖励：成功轨迹最后一步为 1，其余为 0；失败轨迹全为 0。这与学长 IQL 脚本的 sparse terminal-success 接口兼容，但样本效率不高。后续若加入“接近瓶子、稳定抓住、移动到箱上方、释放”等阶段标签或自动奖励，Critic 会更容易学习。
+
+数据集还会保存 checkpoint 的 JSON/YAML preprocessing 配置、权重文件 SHA256 和当前项目 commit。以后做 visual feature 或动作归一化时必须使用同一个 checkpoint；不能只保留数据而删除模型权重。这里保存的是可长期复用的源数据，但 RGB critic 训练前仍需执行一次确定性的“JPEG 解码 → 与 SmolVLA 完全相同的 resize/normalize → 冻结视觉编码器 → visual feature/token”预处理；这不需要重新采真机数据。

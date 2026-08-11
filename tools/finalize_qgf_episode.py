@@ -62,6 +62,9 @@ def build_transitions(samples: list[dict[str, Any]], success: bool, task: str) -
                 "state": [float(x) for x in current["state"]],
                 "state_timestamp_ns": int(current.get("state_timestamp_ns", 0)),
                 "action_policy": [float(x) for x in current["action_policy"]],
+                "policy_action_timestep": int(
+                    current.get("policy_action_timestep", -1)
+                ),
                 "action_policy_timestamp_ns": int(
                     current.get("action_policy_timestamp_ns", 0)
                 ),
@@ -130,18 +133,55 @@ def validate_capture(staging: Path) -> tuple[list[dict[str, Any]], dict[str, Any
         raise FileNotFoundError("capture did not produce samples.jsonl and capture_summary.json")
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     samples = read_jsonl(samples_path)
+    chunks_path = staging / "normalized_policy_chunks.jsonl"
+    if not chunks_path.is_file():
+        raise FileNotFoundError("capture did not produce normalized_policy_chunks.jsonl")
+    chunks = read_jsonl(chunks_path)
+    policy_observations_path = staging / "policy_observations.jsonl"
+    if not policy_observations_path.is_file():
+        raise FileNotFoundError("capture did not produce policy_observations.jsonl")
+    policy_observations = read_jsonl(policy_observations_path)
     if not summary.get("action_gate_was_enabled"):
         raise ValueError("SmolVLA action gate was never enabled")
     if len(samples) < 2:
         raise ValueError(f"only {len(samples)} synchronized samples were captured")
-    for video_name in ("chest.mp4", "wrist_right.mp4"):
+    if not chunks:
+        raise ValueError("no normalized SmolVLA action chunk was captured")
+    if not policy_observations:
+        raise ValueError("no policy observation was captured")
+    chunk_timesteps = {int(row["observation_timestep"]) for row in chunks}
+    usable_observation_timesteps = {
+        int(row["observation_timestep"])
+        for row in policy_observations
+        if int(row.get("chest_frame_index", -1)) >= 0
+        and int(row.get("wrist_frame_index", -1)) >= 0
+    }
+    if not chunk_timesteps.intersection(usable_observation_timesteps):
+        raise ValueError(
+            "no normalized action chunk can be joined to a two-camera policy observation"
+        )
+    for video_name in (
+        "chest.mp4",
+        "wrist_right.mp4",
+        "chest.mjpeg",
+        "wrist_right.mjpeg",
+    ):
         video = staging / video_name
         if not video.is_file() or video.stat().st_size == 0:
             raise ValueError(f"missing or empty video: {video_name}")
+    summary["normalized_policy_chunks"] = len(chunks)
+    summary["policy_observations"] = len(policy_observations)
     return samples, summary
 
 
-def finalize(staging: Path, dataset_root: Path, outcome: str, task: str, notes: str) -> Path | None:
+def finalize(
+    staging: Path,
+    dataset_root: Path,
+    outcome: str,
+    task: str,
+    notes: str,
+    termination_source: str = "unknown",
+) -> Path | None:
     staging = staging.resolve()
     dataset_root = dataset_root.resolve()
     staging_root = (dataset_root / ".staging").resolve()
@@ -155,6 +195,10 @@ def finalize(staging: Path, dataset_root: Path, outcome: str, task: str, notes: 
     success = outcome == "success"
     transitions = build_transitions(samples, success=success, task=task)
     write_parquet(staging / "transitions.parquet", transitions)
+    chunks = read_jsonl(staging / "normalized_policy_chunks.jsonl")
+    write_parquet(staging / "normalized_policy_chunks.parquet", chunks)
+    policy_observations = read_jsonl(staging / "policy_observations.jsonl")
+    write_parquet(staging / "policy_observations.parquet", policy_observations)
     episodes_dir = dataset_root / "episodes"
     episodes_dir.mkdir(parents=True, exist_ok=True)
     lock_path = dataset_root / ".episode_index.lock"
@@ -180,7 +224,15 @@ def finalize(staging: Path, dataset_root: Path, outcome: str, task: str, notes: 
                     "7 right-arm joint radians + gripper_closed in [0,1]"
                 ),
                 "action_policy_definition": (
-                    "raw SmolVLA target; 7 radians + gripper_closed"
+                    "postprocessed physical SmolVLA target; 7 radians + gripper_closed"
+                ),
+                "normalized_chunk_definition": (
+                    "direct output of SmolVLA predict_action_chunk before postprocessing; "
+                    "stored in normalized_policy_chunks.parquet"
+                ),
+                "policy_observation_definition": (
+                    "exact proprioceptive observation keyed by observation_timestep; "
+                    "join with normalized_policy_chunks.parquet on observation_timestep"
                 ),
                 "action_guarded_definition": (
                     "target after task bounds and gripper temporal filter"
@@ -191,9 +243,12 @@ def finalize(staging: Path, dataset_root: Path, outcome: str, task: str, notes: 
                 "camera_features": {
                     "chest": "chest.mp4",
                     "wrist_right": "wrist_right.mp4",
+                    "chest_exact_jpeg_archive": "chest.mjpeg",
+                    "wrist_right_exact_jpeg_archive": "wrist_right.mjpeg",
                 },
                 "task_prompt": task,
                 "notes": notes,
+                "termination_source": termination_source,
                 "finalized_at_utc": utc_now(),
                 "capture": capture_summary,
             }
@@ -251,8 +306,16 @@ def main() -> int:
     parser.add_argument("--outcome", choices=("success", "failure", "discard"), required=True)
     parser.add_argument("--task", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--termination-source", default="unknown")
     args = parser.parse_args()
-    destination = finalize(args.staging, args.dataset_root, args.outcome, args.task, args.notes)
+    destination = finalize(
+        args.staging,
+        args.dataset_root,
+        args.outcome,
+        args.task,
+        args.notes,
+        args.termination_source,
+    )
     if destination is None:
         print("QGF_EPISODE_DISCARDED")
     else:

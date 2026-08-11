@@ -61,6 +61,9 @@ It writes paper-compatible transition tables plus chest/right-wrist MP4 files.
 See [`qgf/docs/real_robot_qgf_collection.md`](qgf/docs/real_robot_qgf_collection.md)
 for the schema, labeling workflow, and realistic data-volume guidance.
 
+The fixed-task baseline-vs-QGF real-robot study is specified in
+[`qgf/docs/real_robot_qgf_experiment_protocol.md`](qgf/docs/real_robot_qgf_experiment_protocol.md).
+
 ## Data and security
 
 Do not commit datasets, checkpoints, SSH keys, tokens, virtual environments,

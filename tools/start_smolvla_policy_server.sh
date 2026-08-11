@@ -12,6 +12,7 @@ OBS_QUEUE_TIMEOUT="${SMOLVLA_OBS_QUEUE_TIMEOUT:-1.0}"
 VENV="${SMOLVLA_VENV:-/ssd/hanbo/TNNLS_2026/envs/lerobot-v0.4.4}"
 CACHE_ROOT="${SMOLVLA_CACHE_ROOT:-/ssd/hanbo/TNNLS_2026/cache}"
 TMP_ROOT="${SMOLVLA_TMP_ROOT:-/ssd/hanbo/TNNLS_2026/tmp}"
+SERVER_MODULE="${SMOLVLA_POLICY_SERVER_MODULE:-lerobot.async_inference.policy_server}"
 
 [[ "${PHYSICAL_GPU}" =~ ^[0-9]+$ ]] || {
   echo "ERROR: SMOLVLA_PHYSICAL_GPU must be one integer." >&2
@@ -31,7 +32,7 @@ export TMPDIR="${TMP_ROOT}"
 
 echo "SMOLVLA_POLICY_SERVER physical_gpu=${PHYSICAL_GPU} logical_device=cuda:0 host=${HOST}:${PORT} fps=${FPS}"
 echo "The model path is supplied by the trusted robot client and must exist on this server."
-exec "${VENV}/bin/python" -m lerobot.async_inference.policy_server \
+exec "${VENV}/bin/python" -m "${SERVER_MODULE}" \
   --host="${HOST}" \
   --port="${PORT}" \
   --fps="${FPS}" \

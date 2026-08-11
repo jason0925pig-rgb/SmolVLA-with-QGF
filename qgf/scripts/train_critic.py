@@ -46,10 +46,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="One or more rollout directories. Overrides --data-dir when provided.",
     )
     parser.add_argument("--output-dir", required=True)
-    # Q-GuidedFlow single-task experiments use five-step action chunks.  The
-    # SmolVLA runtime may preload 50 actions, but that queue length is not the
-    # critic input horizon.
-    parser.add_argument("--action-horizon", type=int, default=5)
+    # The paper's OGBench setup uses short chunks, while the referenced
+    # SmolVLA Guided Action Flow implementation guides its full 50-action
+    # chunk. Real-robot data remains step-wise so either horizon can be built.
+    parser.add_argument("--action-horizon", type=int, default=50)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument(

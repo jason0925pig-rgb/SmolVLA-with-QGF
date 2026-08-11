@@ -6,6 +6,7 @@ import threading
 import time
 from dataclasses import asdict
 from pprint import pformat
+from queue import Queue
 
 import draccus
 
@@ -32,6 +33,15 @@ class ArmstrongRobotClient(RobotClient):
         ready = self.action_chunk_size >= expected and queue_size >= expected
         self.robot.update_policy_queue_state(queue_size, expected, ready)
         return queue_size, expected, ready
+
+    def reset_episode_queue(self) -> None:
+        """Drop stale unexecuted actions without reconnecting or reloading the model."""
+        with self.action_queue_lock:
+            self.action_queue = Queue()
+            self.action_chunk_size = -1
+        self.must_go.set()
+        self._sync_policy_queue_status()
+        self.logger.info("EPISODE_QUEUE_RESET latest_action=%s", self.latest_action)
 
     def actions_available(self):
         available = super().actions_available()
@@ -79,6 +89,10 @@ class ArmstrongRobotClient(RobotClient):
             if not self.running:
                 return None
             sent = self.send_observation(observation)
+            if sent:
+                self.robot.publish_policy_observation(
+                    observation.get_timestep(), raw_observation
+                )
             if sent and observation.must_go:
                 self.must_go.clear()
             if verbose:
@@ -100,7 +114,25 @@ class ArmstrongRobotClient(RobotClient):
             self._sync_policy_queue_status()
             return None
         try:
-            result = super().control_loop_action(verbose)
+            start = time.perf_counter()
+            with self.action_queue_lock:
+                self.action_queue_size.append(self.action_queue.qsize())
+                timed_action = self.action_queue.get_nowait()
+            self.robot.set_policy_action_timestep(timed_action.get_timestep())
+            result = self.robot.send_action(
+                self._action_tensor_to_action_dict(timed_action.get_action())
+            )
+            with self.latest_action_lock:
+                self.latest_action = timed_action.get_timestep()
+            if verbose:
+                with self.action_queue_lock:
+                    current_queue_size = self.action_queue.qsize()
+                self.logger.debug(
+                    "Action #%s performed; queue=%s pop_send_ms=%.2f",
+                    timed_action.get_timestep(),
+                    current_queue_size,
+                    (time.perf_counter() - start) * 1000,
+                )
             self._sync_policy_queue_status()
             return result
         except Exception as exc:
@@ -139,6 +171,7 @@ class ArmstrongRobotClient(RobotClient):
 def main(cfg: RobotClientConfig) -> None:
     logging.info(pformat(asdict(cfg)))
     client = ArmstrongRobotClient(cfg)
+    client.robot.set_episode_reset_callback(client.reset_episode_queue)
 
     def request_stop(signum, _frame) -> None:
         client.logger.warning("Stop signal %s received; stopping the async client", signum)

@@ -236,6 +236,19 @@ disable_policy() {
   echo "SMOLVLA_POLICY_DISABLED"
 }
 
+reset_round() {
+  # Keep controller login, power and robot enable alive between dataset
+  # episodes.  Only the policy/servo gates are closed, then the gripper is
+  # opened for the next scene reset.
+  try_bool /smolvla/set_enabled false
+  call_bool /right_arm/set_motion_enabled false || true
+  wait_status 10 robot_powered_on=1 robot_enabled=1 robot_error_code=0 \
+    robot_emergency_stop=0 robot_protective_stop=0 motion_enabled=0
+  call_bool /right_arm/set_gripper_enabled true
+  call_bool /right_arm/set_gripper_open true
+  echo "SMOLVLA_ROUND_RESET_POWER_AND_ENABLE_RETAINED"
+}
+
 stop_stack() {
   try_bool /smolvla/set_enabled false
   if alive arm; then
@@ -283,5 +296,6 @@ case "${ACTION}" in
   disable-policy) disable_policy ;;
   stop) stop_stack ;;
   status) status_stack ;;
-  *) echo "Usage: $0 {start|prepare|servo|arm|enable-policy|disable-policy|stop|status}" >&2; exit 2 ;;
+  reset-round) reset_round ;;
+  *) echo "Usage: $0 {start|prepare|servo|arm|enable-policy|disable-policy|reset-round|stop|status}" >&2; exit 2 ;;
 esac

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import signal
+import struct
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,9 +22,10 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, String
+from trajectory_msgs.msg import JointTrajectory
 
 
 JOINT_NAMES = tuple(f"right_joint{i}" for i in range(1, 8))
@@ -70,12 +72,23 @@ class VideoSink:
         self.height = 0
         self.latest_timestamp_ns = 0
         self.latest_frame_index = -1
+        # Preserve the exact JPEG byte stream received from ROS in addition
+        # to the convenient MP4.  The length-prefixed archive is future-proof
+        # input for a frozen SmolVLA/VLM visual encoder and avoids an extra
+        # lossy encode/decode when visual_features are computed later.
+        self.archive_path = path.with_suffix(".mjpeg")
+        self.archive = self.archive_path.open("wb")
 
     def write(self, message: CompressedImage) -> None:
         encoded = np.frombuffer(bytes(message.data), dtype=np.uint8)
         frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
         if frame is None:
             return
+        stamp = message.header.stamp
+        timestamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        payload = bytes(message.data)
+        self.archive.write(struct.pack("<QI", timestamp_ns, len(payload)))
+        self.archive.write(payload)
         height, width = frame.shape[:2]
         if self.writer is None:
             self.width, self.height = width, height
@@ -92,13 +105,13 @@ class VideoSink:
         self.writer.write(frame)
         self.latest_frame_index = self.frame_count
         self.frame_count += 1
-        stamp = message.header.stamp
-        self.latest_timestamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        self.latest_timestamp_ns = timestamp_ns
 
     def close(self) -> None:
         if self.writer is not None:
             self.writer.release()
             self.writer = None
+        self.archive.close()
 
 
 class QgfEpisodeRecorder(Node):
@@ -109,6 +122,14 @@ class QgfEpisodeRecorder(Node):
         self.task = task
         self.raw_path = output_dir / "samples.jsonl"
         self.raw_file = self.raw_path.open("w", encoding="utf-8", buffering=1)
+        self.chunk_path = output_dir / "normalized_policy_chunks.jsonl"
+        self.chunk_file = self.chunk_path.open("w", encoding="utf-8", buffering=1)
+        self.policy_observation_path = output_dir / "policy_observations.jsonl"
+        self.policy_observation_file = self.policy_observation_path.open(
+            "w", encoding="utf-8", buffering=1
+        )
+        self.chunk_count = 0
+        self.policy_observation_count = 0
         self.chest = VideoSink(output_dir / "chest.mp4", camera_fps)
         self.wrist = VideoSink(output_dir / "wrist_right.mp4", camera_fps)
         self.action_enabled = False
@@ -118,6 +139,7 @@ class QgfEpisodeRecorder(Node):
         self.gripper_closed: float | None = None
         self.raw_action: list[float] | None = None
         self.raw_action_timestamp_ns = 0
+        self.policy_action_timestep = -1
         self.guarded_action: list[float] | None = None
         self.guarded_action_timestamp_ns = 0
         self.executed_joints: list[float] | None = None
@@ -143,6 +165,23 @@ class QgfEpisodeRecorder(Node):
         )
         self.create_subscription(Bool, "/right_arm/gripper_contact", self._contact_cb, 20)
         self.create_subscription(String, "/smolvla/status", self._status_cb, 20)
+        chunk_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(
+            JointTrajectory,
+            "/smolvla/normalized_action_chunk",
+            self._normalized_chunk_cb,
+            chunk_qos,
+        )
+        self.create_subscription(
+            JointState,
+            "/smolvla/policy_observation_state",
+            self._policy_observation_cb,
+            chunk_qos,
+        )
         self.create_subscription(
             CompressedImage,
             "/camera_chest/color/image_raw/compressed",
@@ -173,6 +212,10 @@ class QgfEpisodeRecorder(Node):
         self.raw_action = ordered_positions(message, (*JOINT_NAMES, GRIPPER_NAME))
         if self.raw_action is not None:
             self.raw_action_timestamp_ns = message_timestamp_ns(message)
+            try:
+                self.policy_action_timestep = int(message.header.frame_id)
+            except ValueError:
+                self.policy_action_timestep = -1
             # send_action only publishes this topic after the action gate has
             # opened.  This starts capture immediately instead of waiting up
             # to 0.5 s for the periodic status topic.
@@ -199,6 +242,48 @@ class QgfEpisodeRecorder(Node):
         self.action_enabled = enabled
         self.ever_enabled = self.ever_enabled or enabled
 
+    def _normalized_chunk_cb(self, message: JointTrajectory) -> None:
+        if tuple(message.joint_names) != (*JOINT_NAMES, GRIPPER_NAME):
+            return
+        try:
+            observation_timestep = int(message.header.frame_id)
+        except ValueError:
+            return
+        chunk = [[float(value) for value in point.positions] for point in message.points]
+        if not chunk or any(len(row) != 8 for row in chunk):
+            return
+        stamp = message.header.stamp
+        row = {
+            "chunk_index": self.chunk_count,
+            "observation_timestep": observation_timestep,
+            "timestamp_ns": int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec),
+            "action_chunk_normalized": chunk,
+        }
+        self.chunk_file.write(json.dumps(row, separators=(",", ":")) + "\n")
+        self.chunk_count += 1
+
+    def _policy_observation_cb(self, message: JointState) -> None:
+        state = ordered_positions(message, (*JOINT_NAMES, GRIPPER_NAME))
+        if state is None:
+            return
+        try:
+            observation_timestep = int(message.header.frame_id)
+        except ValueError:
+            return
+        row = {
+            "observation_timestep": observation_timestep,
+            "timestamp_ns": message_timestamp_ns(message),
+            "state": state,
+            "chest_frame_index": self.chest.latest_frame_index,
+            "chest_timestamp_ns": self.chest.latest_timestamp_ns,
+            "wrist_frame_index": self.wrist.latest_frame_index,
+            "wrist_timestamp_ns": self.wrist.latest_timestamp_ns,
+        }
+        self.policy_observation_file.write(
+            json.dumps(row, separators=(",", ":")) + "\n"
+        )
+        self.policy_observation_count += 1
+
     def _chest_cb(self, message: CompressedImage) -> None:
         if self.action_enabled:
             self.chest.write(message)
@@ -219,6 +304,8 @@ class QgfEpisodeRecorder(Node):
         )
         if any(item is None for item in required):
             return
+        if self.chest.latest_frame_index < 0 or self.wrist.latest_frame_index < 0:
+            return
         executed_gripper = (
             self.gripper_closed
             if self.executed_gripper_closed is None
@@ -230,6 +317,7 @@ class QgfEpisodeRecorder(Node):
             "state": [*self.state, self.gripper_closed],
             "state_timestamp_ns": self.state_timestamp_ns,
             "action_policy": self.raw_action,
+            "policy_action_timestep": self.policy_action_timestep,
             "action_policy_timestamp_ns": self.raw_action_timestamp_ns,
             "action_guarded": self.guarded_action,
             "action_guarded_timestamp_ns": self.guarded_action_timestamp_ns,
@@ -248,16 +336,21 @@ class QgfEpisodeRecorder(Node):
         self.chest.close()
         self.wrist.close()
         self.raw_file.close()
+        self.chunk_file.close()
+        self.policy_observation_file.close()
         summary = {
             "schema_version": "qgf-real-rollout-1.0",
             "task": self.task,
             "started_at_utc": self.started_at,
             "finished_at_utc": utc_now(),
             "sample_count": self.sample_count,
+            "normalized_policy_chunk_count": self.chunk_count,
+            "policy_observation_count": self.policy_observation_count,
             "action_gate_was_enabled": self.ever_enabled,
             "videos": {
                 "chest": {
                     "path": "chest.mp4",
+                    "exact_jpeg_archive": "chest.mjpeg",
                     "frames": self.chest.frame_count,
                     "width": self.chest.width,
                     "height": self.chest.height,
@@ -265,6 +358,7 @@ class QgfEpisodeRecorder(Node):
                 },
                 "wrist_right": {
                     "path": "wrist_right.mp4",
+                    "exact_jpeg_archive": "wrist_right.mjpeg",
                     "frames": self.wrist.frame_count,
                     "width": self.wrist.width,
                     "height": self.wrist.height,
