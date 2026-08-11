@@ -30,7 +30,12 @@ class ArmstrongRobotClient(RobotClient):
         with self.action_queue_lock:
             queue_size = self.action_queue.qsize()
         expected = max(1, int(self.config.actions_per_chunk))
-        ready = self.action_chunk_size >= expected and queue_size >= expected
+        # After an episode reset the new observation timestep equals the last
+        # executed timestep. Upstream correctly drops that duplicate first
+        # action, leaving 49 executable actions from a nominal 50-step chunk.
+        # Treat this de-duplicated chunk as fully preloaded.
+        minimum_ready = max(1, expected - 1)
+        ready = self.action_chunk_size >= minimum_ready and queue_size >= minimum_ready
         self.robot.update_policy_queue_state(queue_size, expected, ready)
         return queue_size, expected, ready
 

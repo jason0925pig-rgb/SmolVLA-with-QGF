@@ -140,7 +140,6 @@ wait_observation_and_chunk() {
   python3 "${PROJECT_ROOT}/tools/wait_for_string_topic.py" /smolvla/status \
     --timeout 180 --contains connected=1 --contains action_enabled=0 \
     --contains policy_chunk_ready=1 \
-    --contains "action_queue_size=${SMOLVLA_ACTIONS_PER_CHUNK}" \
     --contains "expected_action_chunk_size=${SMOLVLA_ACTIONS_PER_CHUNK}"
 }
 
