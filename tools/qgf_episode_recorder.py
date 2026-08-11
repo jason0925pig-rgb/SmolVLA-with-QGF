@@ -115,7 +115,15 @@ class VideoSink:
 
 
 class QgfEpisodeRecorder(Node):
-    def __init__(self, output_dir: Path, sample_hz: float, camera_fps: float, task: str):
+    def __init__(
+        self,
+        output_dir: Path,
+        sample_hz: float,
+        camera_fps: float,
+        task: str,
+        gripper_open_position: float,
+        gripper_closed_position: float,
+    ):
         super().__init__("qgf_episode_recorder")
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -147,6 +155,24 @@ class QgfEpisodeRecorder(Node):
         self.executed_gripper_closed: float | None = None
         self.gripper_contact = False
         self.sample_count = 0
+        self.callback_counts = {
+            "joint_state": 0,
+            "executed_joint": 0,
+            "raw_action": 0,
+            "guarded_action": 0,
+            "gripper_state": 0,
+            "executed_gripper": 0,
+            "gripper_contact": 0,
+            "smolvla_status": 0,
+            "normalized_chunk": 0,
+            "policy_observation": 0,
+            "chest": 0,
+            "wrist": 0,
+        }
+        self.gripper_open_position = float(gripper_open_position)
+        self.gripper_closed_position = float(gripper_closed_position)
+        if self.gripper_closed_position <= self.gripper_open_position:
+            raise ValueError("gripper_closed_position must exceed gripper_open_position")
         self.started_at = utc_now()
 
         self.create_subscription(JointState, "/right_arm/joint_states", self._state_cb, 20)
@@ -159,7 +185,9 @@ class QgfEpisodeRecorder(Node):
         self.create_subscription(
             JointState, "/smolvla/guarded_policy_action", self._guarded_action_cb, 20
         )
-        self.create_subscription(Bool, "/right_arm/gripper_state", self._gripper_state_cb, 20)
+        self.create_subscription(
+            JointState, "/right_arm/gripper_state", self._gripper_state_cb, 20
+        )
         self.create_subscription(
             Bool, "/right_arm/executed_gripper_command", self._executed_gripper_cb, 20
         )
@@ -197,18 +225,21 @@ class QgfEpisodeRecorder(Node):
         self.create_timer(1.0 / sample_hz, self._sample)
 
     def _state_cb(self, message: JointState) -> None:
+        self.callback_counts["joint_state"] += 1
         value = ordered_positions(message, JOINT_NAMES)
         if value is not None:
             self.state = value
             self.state_timestamp_ns = message_timestamp_ns(message)
 
     def _executed_joint_cb(self, message: JointState) -> None:
+        self.callback_counts["executed_joint"] += 1
         value = ordered_positions(message, JOINT_NAMES)
         if value is not None:
             self.executed_joints = value
             self.executed_action_timestamp_ns = message_timestamp_ns(message)
 
     def _raw_action_cb(self, message: JointState) -> None:
+        self.callback_counts["raw_action"] += 1
         self.raw_action = ordered_positions(message, (*JOINT_NAMES, GRIPPER_NAME))
         if self.raw_action is not None:
             self.raw_action_timestamp_ns = message_timestamp_ns(message)
@@ -223,26 +254,37 @@ class QgfEpisodeRecorder(Node):
             self.ever_enabled = True
 
     def _guarded_action_cb(self, message: JointState) -> None:
+        self.callback_counts["guarded_action"] += 1
         self.guarded_action = ordered_positions(message, (*JOINT_NAMES, GRIPPER_NAME))
         if self.guarded_action is not None:
             self.guarded_action_timestamp_ns = message_timestamp_ns(message)
 
-    def _gripper_state_cb(self, message: Bool) -> None:
-        # ROS Bool means requested_open; QGF/LeRobot uses 1=closed.
-        self.gripper_closed = float(not message.data)
+    def _gripper_state_cb(self, message: JointState) -> None:
+        self.callback_counts["gripper_state"] += 1
+        if not message.position:
+            return
+        position = float(message.position[0])
+        span = self.gripper_closed_position - self.gripper_open_position
+        self.gripper_closed = float(
+            np.clip((position - self.gripper_open_position) / span, 0.0, 1.0)
+        )
 
     def _executed_gripper_cb(self, message: Bool) -> None:
+        self.callback_counts["executed_gripper"] += 1
         self.executed_gripper_closed = float(not message.data)
 
     def _contact_cb(self, message: Bool) -> None:
+        self.callback_counts["gripper_contact"] += 1
         self.gripper_contact = bool(message.data)
 
     def _status_cb(self, message: String) -> None:
+        self.callback_counts["smolvla_status"] += 1
         enabled = parse_status(message.data).get("action_enabled") == "1"
         self.action_enabled = enabled
         self.ever_enabled = self.ever_enabled or enabled
 
     def _normalized_chunk_cb(self, message: JointTrajectory) -> None:
+        self.callback_counts["normalized_chunk"] += 1
         if tuple(message.joint_names) != (*JOINT_NAMES, GRIPPER_NAME):
             return
         try:
@@ -263,6 +305,7 @@ class QgfEpisodeRecorder(Node):
         self.chunk_count += 1
 
     def _policy_observation_cb(self, message: JointState) -> None:
+        self.callback_counts["policy_observation"] += 1
         state = ordered_positions(message, (*JOINT_NAMES, GRIPPER_NAME))
         if state is None:
             return
@@ -285,10 +328,12 @@ class QgfEpisodeRecorder(Node):
         self.policy_observation_count += 1
 
     def _chest_cb(self, message: CompressedImage) -> None:
+        self.callback_counts["chest"] += 1
         if self.action_enabled:
             self.chest.write(message)
 
     def _wrist_cb(self, message: CompressedImage) -> None:
+        self.callback_counts["wrist"] += 1
         if self.action_enabled:
             self.wrist.write(message)
 
@@ -346,6 +391,11 @@ class QgfEpisodeRecorder(Node):
             "sample_count": self.sample_count,
             "normalized_policy_chunk_count": self.chunk_count,
             "policy_observation_count": self.policy_observation_count,
+            "callback_counts": self.callback_counts,
+            "gripper_position_normalization": {
+                "open_position": self.gripper_open_position,
+                "closed_position": self.gripper_closed_position,
+            },
             "action_gate_was_enabled": self.ever_enabled,
             "videos": {
                 "chest": {
@@ -377,12 +427,21 @@ def main() -> int:
     parser.add_argument("--task", required=True)
     parser.add_argument("--sample-hz", type=float, default=15.0)
     parser.add_argument("--camera-fps", type=float, default=30.0)
+    parser.add_argument("--gripper-open-position", type=float, default=2000.0)
+    parser.add_argument("--gripper-closed-position", type=float, default=12000.0)
     args = parser.parse_args()
     if args.sample_hz <= 0 or args.camera_fps <= 0:
         parser.error("rates must be positive")
 
     rclpy.init(args=None)
-    recorder = QgfEpisodeRecorder(args.output_dir, args.sample_hz, args.camera_fps, args.task)
+    recorder = QgfEpisodeRecorder(
+        args.output_dir,
+        args.sample_hz,
+        args.camera_fps,
+        args.task,
+        args.gripper_open_position,
+        args.gripper_closed_position,
+    )
     stopping = False
 
     def request_stop(_signum: int, _frame: Any) -> None:

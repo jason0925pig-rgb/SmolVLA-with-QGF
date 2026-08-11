@@ -144,7 +144,10 @@ def validate_capture(staging: Path) -> tuple[list[dict[str, Any]], dict[str, Any
     if not summary.get("action_gate_was_enabled"):
         raise ValueError("SmolVLA action gate was never enabled")
     if len(samples) < 2:
-        raise ValueError(f"only {len(samples)} synchronized samples were captured")
+        raise ValueError(
+            f"only {len(samples)} synchronized samples were captured; "
+            f"topic callback counts={summary.get('callback_counts', {})}"
+        )
     if not chunks:
         raise ValueError("no normalized SmolVLA action chunk was captured")
     if not policy_observations:
