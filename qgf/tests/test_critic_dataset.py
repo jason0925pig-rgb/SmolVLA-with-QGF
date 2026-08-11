@@ -2,9 +2,48 @@ import torch
 
 from guided_action_flow.training.critic_dataset import (
     build_action_chunk_dataset,
+    discover_episode_files,
+    load_real_robot_parquet,
     split_indices_by_episode,
     success_to_go_targets,
 )
+
+
+def test_real_robot_parquet_is_discovered_and_loaded(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    episode_dir = tmp_path / "episodes" / "episode_000000"
+    episode_dir.mkdir(parents=True)
+    path = episode_dir / "transitions.parquet"
+    rows = [
+        {
+            "state": [0.0, 0.5],
+            "action_policy": [0.1, 1.0],
+            "next_state": [0.1, 1.0],
+            "reward": 0.0,
+            "success": False,
+            "done": False,
+            "task": "put bottle in box",
+        },
+        {
+            "state": [0.1, 1.0],
+            "action_policy": [0.2, 0.0],
+            "next_state": [0.2, 0.0],
+            "reward": 1.0,
+            "success": True,
+            "done": True,
+            "task": "put bottle in box",
+        },
+    ]
+    pq.write_table(pa.Table.from_pylist(rows), path)
+
+    assert discover_episode_files(tmp_path) == [path]
+    episode = load_real_robot_parquet(path)
+    assert episode["state"].shape == (2, 2)
+    assert episode["action_policy"].shape == (2, 2)
+    assert episode["success"].tolist() == [False, True]
+    assert episode["task"] == "put bottle in box"
 
 
 def test_success_to_go_targets_use_first_future_success():

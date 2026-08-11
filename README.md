@@ -48,6 +48,19 @@ cd E:\AAA__Github_Project\SmolVLA-with-QGF
 The staged launcher does not move the robot until the operator explicitly
 passes the hardware checks and enters `ARM`, followed later by `MOVE`.
 
+## Collect real-robot QGF rollouts
+
+The continuous collector runs the baseline repeatedly and asks after every
+round whether to save a success, save a failure, or delete the attempt:
+
+```powershell
+.\tools\collect_qgf_rollouts.cmd -EpisodeCount 20
+```
+
+It writes paper-compatible transition tables plus chest/right-wrist MP4 files.
+See [`qgf/docs/real_robot_qgf_collection.md`](qgf/docs/real_robot_qgf_collection.md)
+for the schema, labeling workflow, and realistic data-volume guidance.
+
 ## Data and security
 
 Do not commit datasets, checkpoints, SSH keys, tokens, virtual environments,

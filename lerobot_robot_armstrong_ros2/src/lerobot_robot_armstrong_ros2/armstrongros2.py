@@ -187,6 +187,17 @@ class ArmstrongRos2(Robot):
         )
         self._stop_pub = self._node.create_publisher(Bool, self.config.stop_topic, 10)
         self._status_pub = self._node.create_publisher(String, "/smolvla/status", 10)
+        # Dataset-only telemetry.  These topics are observations of what the
+        # policy requested and what passed the safety guard; they are never
+        # consumed by the robot controllers and therefore cannot command
+        # motion.  A QGF rollout recorder uses them to reconstruct
+        # (state, action, next_state, reward) transitions.
+        self._raw_policy_action_pub = self._node.create_publisher(
+            JointState, "/smolvla/raw_policy_action", 10
+        )
+        self._guarded_policy_action_pub = self._node.create_publisher(
+            JointState, "/smolvla/guarded_policy_action", 10
+        )
         self._node.create_subscription(
             JointState, self.config.joint_state_topic, self._joint_callback, 10
         )
@@ -460,6 +471,7 @@ class ArmstrongRos2(Robot):
             return action
         joints, gripper_closed, _, _ = self._snapshot()
         predicted = tuple(float(action[name]) for name in (*JOINT_NAMES, GRIPPER_NAME))
+        self._publish_policy_action(self._raw_policy_action_pub, predicted)
         try:
             guarded_joints, _ = guard_policy_action(
                 predicted,
@@ -488,6 +500,10 @@ class ArmstrongRos2(Robot):
                 contact_active=self._gripper_contact,
             )
         guarded_gripper = temporal_gripper.command_closed
+        self._publish_policy_action(
+            self._guarded_policy_action_pub,
+            (*guarded_joints, float(guarded_gripper)),
+        )
 
         self._last_safe_joint_command = tuple(guarded_joints)
         self._publish_joint_command(self._last_safe_joint_command)
@@ -519,6 +535,20 @@ class ArmstrongRos2(Robot):
             **dict(zip(JOINT_NAMES, guarded_joints, strict=True)),
             GRIPPER_NAME: float(guarded_gripper),
         }
+
+    def _publish_policy_action(
+        self,
+        publisher: Any,
+        values: tuple[float, ...],
+    ) -> None:
+        """Publish one eight-dimensional policy action for passive recording."""
+        if self._node is None:
+            return
+        message = JointState()
+        message.header.stamp = self._node.get_clock().now().to_msg()
+        message.name = [*JOINT_NAMES, GRIPPER_NAME]
+        message.position = [float(value) for value in values]
+        publisher.publish(message)
 
     def _update_task_completion(
         self,

@@ -46,7 +46,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="One or more rollout directories. Overrides --data-dir when provided.",
     )
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--action-horizon", type=int, default=50)
+    # Q-GuidedFlow single-task experiments use five-step action chunks.  The
+    # SmolVLA runtime may preload 50 actions, but that queue length is not the
+    # critic input horizon.
+    parser.add_argument("--action-horizon", type=int, default=5)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument(
@@ -116,7 +119,9 @@ def main() -> None:
     for data_dir in data_dirs:
         episode_files.extend(discover_episode_files(data_dir))
     if not episode_files:
-        raise FileNotFoundError(f"No episode_*.pt files found under {data_dirs}.")
+        raise FileNotFoundError(
+            f"No episode_*.pt or real-robot transitions.parquet files found under {data_dirs}."
+        )
 
     episodes = load_episode_files(episode_files)
     dataset = build_action_chunk_dataset(

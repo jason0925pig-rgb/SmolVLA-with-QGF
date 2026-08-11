@@ -281,10 +281,77 @@ def load_episode_files(paths):
 
     episodes = []
     for path in paths:
-        episodes.append(torch.load(Path(path), map_location="cpu", weights_only=False))
+        path = Path(path)
+        if path.suffix == ".parquet":
+            episodes.append(load_real_robot_parquet(path))
+        else:
+            episodes.append(torch.load(path, map_location="cpu", weights_only=False))
     return episodes
+
+
+def load_real_robot_parquet(path: str | Path):
+    """Load the standardized real-robot transition table as one episode.
+
+    Videos remain external MP4 files.  Frame indices/timestamps are retained
+    in the returned mapping so a future vision encoder can retrieve aligned
+    frames without changing the control/action interface.
+    """
+
+    import torch
+
+    path = Path(path)
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise RuntimeError("pyarrow is required to read real-robot QGF data") from exc
+    table = pq.read_table(path)
+    columns = table.to_pydict()
+    required = {"state", "action_policy", "next_state", "reward", "success", "done"}
+    missing = sorted(required - columns.keys())
+    if missing:
+        raise ValueError(f"{path} is missing required QGF columns: {missing}")
+    episode = {
+        "state": torch.tensor(columns["state"], dtype=torch.float32),
+        "action_policy": torch.tensor(columns["action_policy"], dtype=torch.float32),
+        "next_state": torch.tensor(columns["next_state"], dtype=torch.float32),
+        "reward": torch.tensor(columns["reward"], dtype=torch.float32),
+        "success": torch.tensor(columns["success"], dtype=torch.bool),
+        "done": torch.tensor(columns["done"], dtype=torch.bool),
+        "source_path": str(path),
+        "source_kind": "qgf-real-rollout-1.0",
+    }
+    for key in (
+        "action_guarded",
+        "action_executed",
+        "terminated",
+        "truncated",
+        "episode_success",
+        "gripper_contact",
+        "chest_frame_index",
+        "chest_timestamp_ns",
+        "wrist_frame_index",
+        "wrist_timestamp_ns",
+    ):
+        if key in columns:
+            value = columns[key]
+            if key.startswith("action_"):
+                episode[key] = torch.tensor(value, dtype=torch.float32)
+            elif key.endswith("timestamp_ns") or key.endswith("frame_index"):
+                episode[key] = torch.tensor(value, dtype=torch.long)
+            else:
+                episode[key] = torch.tensor(value, dtype=torch.bool)
+    tasks = columns.get("task", [])
+    episode["task"] = tasks[0] if tasks else ""
+    episode["camera_videos"] = {
+        "chest": str(path.parent / "chest.mp4"),
+        "wrist_right": str(path.parent / "wrist_right.mp4"),
+    }
+    return episode
 
 
 def discover_episode_files(data_dir: str | Path):
     data_path = Path(data_dir)
-    return sorted(data_path.rglob("episode_*.pt"))
+    return sorted(
+        [*data_path.rglob("episode_*.pt"), *data_path.rglob("transitions.parquet")],
+        key=lambda path: str(path),
+    )

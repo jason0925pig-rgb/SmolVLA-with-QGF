@@ -20,6 +20,7 @@ checkpoints/
 outputs/
 runs/
 work/
+tmp/
 third_party/
 *.safetensors
 *.pt
