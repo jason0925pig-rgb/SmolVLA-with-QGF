@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>LIBERO-Plus QGF Results</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 1440px;
+      min-height: 1030px;
+      padding: 48px 54px;
+      color: #171717;
+      background: #ffffff;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 31px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      margin-bottom: 28px;
+      color: #525252;
+      font-size: 19px;
+      line-height: 1.6;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 4px;
+      table-layout: fixed;
+      font-size: 20px;
+    }
+    th, td {
+      padding: 17px 15px;
+      vertical-align: middle;
+      text-align: left;
+      background: #f1f1f1;
+      border-radius: 6px;
+      line-height: 1.35;
+    }
+    th {
+      background: #e7e7e7;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    th:first-child { width: 24%; }
+    th:nth-child(2), th:nth-child(3), th:nth-child(4), th:nth-child(5) { width: 13%; }
+    th:last-child { width: 24%; }
+    .task {
+      font-weight: 650;
+    }
+    .task-id {
+      display: block;
+      margin-top: 3px;
+      color: #737373;
+      font-size: 15px;
+      font-weight: 400;
+    }
+    .up { color: #08783e; font-weight: 700; }
+    .down { color: #b42318; font-weight: 700; }
+    .flat { color: #525252; font-weight: 700; }
+    .mixed { color: #8a4b08; font-weight: 700; }
+    .overall td {
+      background: #e5edf8;
+      font-weight: 700;
+    }
+    .notes {
+      margin-top: 25px;
+      padding: 0 5px;
+      font-size: 19px;
+      line-height: 1.65;
+    }
+    .notes strong { font-weight: 750; }
+    .notes p { margin: 7px 0; }
+    .footnote {
+      margin-top: 14px;
+      color: #666666;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>LIBERO-Plus Spatial：Baseline vs QGF 成功率（Transformer-IQL Critic，β=1）</h1>
+  <div class="subtitle">
+    Seed 60000：快速筛选，3 episodes / task；Seed 70000：留出测试，5 episodes / task。
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>扰动维度</th>
+        <th>Seed 60000<br>Baseline</th>
+        <th>Seed 60000<br>+ QGF</th>
+        <th>Seed 70000<br>Baseline</th>
+        <th>Seed 70000<br>+ QGF</th>
+        <th>双 Seed 判断</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="task">Objects Layout（物体布局）<span class="task-id">Task 1975</span></td>
+        <td>33.3%</td><td>100.0%</td><td>100.0%</td><td>80.0%</td>
+        <td class="mixed">+66.7 / -20.0，不一致</td>
+      </tr>
+      <tr>
+        <td class="task">Language（指令）<span class="task-id">Task 988</span></td>
+        <td>0.0%</td><td>66.7%</td><td>40.0%</td><td>20.0%</td>
+        <td class="mixed">+66.7 / -20.0，不一致</td>
+      </tr>
+      <tr>
+        <td class="task">Camera Viewpoints（视角）<span class="task-id">Task 611</span></td>
+        <td>33.3%</td><td>33.3%</td><td>20.0%</td><td>20.0%</td>
+        <td class="flat">0.0 / 0.0，持平</td>
+      </tr>
+      <tr>
+        <td class="task">Light（光照）<span class="task-id">Tasks 2123, 2265</span></td>
+        <td>50.0%</td><td>50.0%</td><td>80.0%</td><td>70.0%</td>
+        <td class="down">0.0 / -10.0，未提升</td>
+      </tr>
+      <tr>
+        <td class="task">Background（背景）<span class="task-id">Tasks 0, 4</span></td>
+        <td>50.0%</td><td>66.7%</td><td>80.0%</td><td>70.0%</td>
+        <td class="mixed">+16.7 / -10.0，不一致</td>
+      </tr>
+      <tr>
+        <td class="task">Robot Init（初始位姿）<span class="task-id">Task 258</span></td>
+        <td>33.3%</td><td>100.0%</td><td>20.0%</td><td>60.0%</td>
+        <td class="up">+66.7 / +40.0，一致提升</td>
+      </tr>
+      <tr class="overall">
+        <td>全部维度混合</td>
+        <td>37.5%</td><td>66.7%</td><td>62.5%</td><td>57.5%</td>
+        <td class="mixed">+29.2 / -5.0，不一致</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="notes">
+    <p><strong>稳定正向：</strong>Robot Initial States 在两个 seed 上均提升，是当前最值得继续单独训练和验证的扰动。</p>
+    <p><strong>未能泛化：</strong>整体在调参 seed 上显著上涨，但在留出 seed 上由 62.5% 降至 57.5%。</p>
+    <p><strong>结论：</strong>当前 critic 对部分任务有效，但还不能证明能够稳定提高整个 LIBERO-Plus Spatial suite。</p>
+    <p class="footnote">本轮筛选任务中没有 Sensor Noise 类任务满足 30%–70% baseline 成功率，因此表中不包含噪声维度。</p>
+  </div>
+</body>
+</html>

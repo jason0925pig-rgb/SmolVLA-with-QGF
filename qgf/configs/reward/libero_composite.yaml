@@ -1,0 +1,16 @@
+reward:
+  name: libero_composite
+  gamma: 0.99
+
+  terms:
+    terminal_success:
+      weight: 1.0
+      enabled: true
+    potential_progress:
+      weight: 0.0
+      enabled: false
+      note: Enable only after task-specific observable progress signals are verified.
+    action_smoothness:
+      weight: -0.01
+      enabled: false
+

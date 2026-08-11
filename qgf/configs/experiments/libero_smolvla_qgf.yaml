@@ -1,0 +1,34 @@
+defaults:
+  - /benchmarks: libero
+  - /policy: smolvla_base
+  - /reward: libero_composite
+  - _self_
+
+experiment:
+  name: libero_smolvla_qgf
+  seed: 0
+  output_dir: runs/libero_smolvla_qgf
+
+rollout:
+  episodes: 20
+  deterministic: true
+  save_video: true
+
+critic:
+  obs_feature_dim: null
+  proprio_dim: null
+  hidden_dim: 512
+  depth: 3
+  ensemble_size: 2
+  learning_rate: 1.0e-4
+  batch_size: 64
+  train_steps: 10000
+
+qgf:
+  enabled: false
+  beta: 10.0
+  grad_clip_norm: 1.0
+  guidance_start_step: 0
+  guidance_end_step: null
+  time_convention: verify_from_smolvla_sampler
+

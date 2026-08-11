@@ -9,4 +9,21 @@ id_ed25519*
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+*.egg-info/
+build/
+install/
+log/
+recordings/
+datasets/
+checkpoints/
+outputs/
+runs/
+work/
+third_party/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
 

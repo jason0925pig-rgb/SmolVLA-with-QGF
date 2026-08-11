@@ -1,0 +1,19 @@
+benchmark:
+  name: libero
+  suite: null
+  task: null
+  seed: 0
+  horizon: null
+
+  roots:
+    repo: third_party/LIBERO
+    data: data/libero
+
+  observation:
+    image_size: [224, 224]
+    image_keys: []
+    proprio_keys: []
+
+  success:
+    info_keys: [success, is_success]
+

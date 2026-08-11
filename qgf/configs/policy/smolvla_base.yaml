@@ -1,0 +1,17 @@
+policy:
+  name: smolvla
+  backend: lerobot
+  model_id: lerobot/smolvla_base
+  device: cuda
+  dtype: bfloat16
+  freeze_base: true
+
+  # Resolve these from the installed LeRobot/SmolVLA config at runtime.
+  action_dim: null
+  action_horizon: null
+
+  observation_mapping:
+    image_keys: []
+    proprio_key: null
+    language_key: task_instruction
+

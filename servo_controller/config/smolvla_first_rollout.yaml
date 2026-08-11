@@ -1,0 +1,73 @@
+safe_one_arm_servo:
+  ros__parameters:
+    arm_name: "right"
+    robot_ip: "192.168.2.226"
+    robot_port: 10020
+
+    # Checked-in defaults never authorize hardware.  The attended policy
+    # launcher must override these gates explicitly after its preflight.
+    dry_run: true
+    hardware_power_authorized: false
+    hardware_enable_authorized: false
+    hardware_motion_authorized: false
+    limits_configured: true
+    power_on_on_arm: false
+    enable_robot_on_arm: false
+    disable_robot_on_disarm: false
+
+    # Autonomous inference restores fail-stop watchdogs.  This is intentionally
+    # different from the relaxed human-attended data-collection profile.
+    # Orin inference currently takes about 1.5-1.7 s per 50-action chunk.
+    # The ROS client refreshes the last guarded target at 15 Hz between
+    # chunks; five seconds still stops a dead client without treating normal
+    # inference or a short controller-status pause as a disconnect.
+    command_timeout_seconds: 5.0
+    feedback_timeout_seconds: 5.0
+    stop_on_command_timeout: true
+    stop_on_feedback_timeout: true
+    # The policy publishes new targets at 15 Hz, while this lower-level loop
+    # slews between them at the JAKA SDK's proven 8 ms cadence.  The 40 ms
+    # step_num=5 overload returned ERR_INVALID_HANDLER during attended tests,
+    # so keep the established step_num=1 path until the vendor explains it.
+    control_rate_hz: 125.0
+    servo_step_num: 1
+    state_rate_hz: 20.0
+    control_deadline_warning_factor: 1.5
+    control_deadline_abort_seconds: 0.10
+    control_deadline_abort_consecutive_misses: 5
+    stop_on_control_deadline_abort: true
+    require_single_command_publisher: true
+
+    joint_lower_limits: [-6.2832, -1.8325, -6.2832, -2.5307, -6.2832, -1.8325, -6.2832]
+    joint_upper_limits: [6.2832, 1.8325, 6.2832, 0.5235, 6.2832, 1.8325, 6.2832]
+
+    # Attended diagnostic rollout: effectively disable the software's fixed
+    # velocity ceiling.  The limiter requires a finite positive value, so a
+    # deliberately unreachable 100 rad/s is used instead of zero/inf.
+    # Joint-position limits, the policy target-error guard, the acceleration
+    # ramp below, SDK/controller limits and the physical E-stop remain active.
+    max_velocity_rad_s: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+    max_acceleration_rad_s2: [0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50]
+
+safe_gripper_controller:
+  ros__parameters:
+    arm_name: "right"
+    gripper_type: "zx"
+    gripper_model: "CTAG2F120"
+    port: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
+    slave_id: 1
+    baudrate: 115200
+
+    dry_run: true
+    configuration_complete: true
+    open_position: 2000
+    closed_position: 12000
+    speed: 50
+    force: 20
+    open_speed: 100
+    open_force: 60
+    closed_speed: 50
+    closed_force: 20
+    allowed_alarm_mask: 32
+    movement_timeout_seconds: 5.0
+    stop_on_movement_timeout: true

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LIBERO-Plus Spatial Final Results</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #5b6472;
+      --line: #ffffff;
+      --head: #dedede;
+      --cell: #eeeeee;
+      --total: #dce9f8;
+      --good: #087f3d;
+      --bad: #c51d20;
+      --warn: #995300;
+      --neutral: #455468;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      width: 1600px;
+      min-height: 1260px;
+      padding: 48px 54px 40px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.25;
+      font-weight: 800;
+    }
+
+    .subtitle {
+      margin: 14px 0 30px;
+      color: #354052;
+      font-size: 18px;
+      line-height: 1.45;
+    }
+
+    .table-wrap {
+      overflow: hidden;
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 4px;
+      margin: -4px;
+      width: calc(100% + 8px);
+    }
+
+    col.dimension { width: 24%; }
+    col.metric { width: 13%; }
+    col.judgement { width: 24%; }
+
+    th, td {
+      padding: 17px 18px;
+      vertical-align: middle;
+      border: 0;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      height: 82px;
+      background: var(--head);
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    td {
+      height: 82px;
+      background: var(--cell);
+      font-size: 21px;
+      line-height: 1.25;
+    }
+
+    .dimension-name {
+      display: block;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .task-ids {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .judgement {
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+    .warn { color: var(--warn); }
+    .neutral { color: var(--neutral); }
+
+    tr.total td {
+      background: var(--total);
+      font-weight: 800;
+    }
+
+    .notes {
+      margin-top: 28px;
+      display: grid;
+      gap: 10px;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .notes p { margin: 0; }
+    .notes strong { font-weight: 800; }
+
+    .footnote {
+      margin-top: 15px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LIBERO-Plus Spatial：Baseline vs QGF 成功率（Transformer-IQL Critic，&beta;=8）</h1>
+    <p class="subtitle">Mixed-data training；Seed 220000 / 230000：35 tasks，5 episodes / task；每个 seed、每个 arm 共 175 episodes。</p>
+
+    <div class="table-wrap">
+      <table aria-label="LIBERO-Plus Spatial final comparison">
+        <colgroup>
+          <col class="dimension">
+          <col class="metric"><col class="metric"><col class="metric"><col class="metric">
+          <col class="judgement">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>扰动维度</th>
+            <th>Seed 220000<br>Baseline</th>
+            <th>Seed 220000<br>+ QGF</th>
+            <th>Seed 230000<br>Baseline</th>
+            <th>Seed 230000<br>+ QGF</th>
+            <th>双 Seed 判断<br>（&Delta;百分点；合计）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="dimension-name">Background Textures（背景）</span><span class="task-ids">Tasks 165, 44, 121, 75, 84</span></td>
+            <td>76.0%</td><td>60.0%</td><td>68.0%</td><td>60.0%</td>
+            <td class="judgement bad">-16.0 / -8.0；合计 -12.0，一致下降</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Robot Initial States（初始位姿）</span><span class="task-ids">Tasks 259, 342, 277, 338, 368</span></td>
+            <td>32.0%</td><td>24.0%</td><td>32.0%</td><td>32.0%</td>
+            <td class="judgement warn">-8.0 / 0.0；合计 -4.0，一降一平</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Camera Viewpoints（视角）</span><span class="task-ids">Tasks 609, 612, 679, 795, 751</span></td>
+            <td>28.0%</td><td>24.0%</td><td>16.0%</td><td>32.0%</td>
+            <td class="judgement warn">-4.0 / +16.0；合计 +6.0，不一致</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Language Instructions（指令）</span><span class="task-ids">Tasks 985, 994, 1073, 1127, 1048</span></td>
+            <td>32.0%</td><td>24.0%</td><td>28.0%</td><td>28.0%</td>
+            <td class="judgement warn">-8.0 / 0.0；合计 -4.0，一降一平</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Sensor Noise（传感器噪声）</span><span class="task-ids">Tasks 1469, 1549, 1423, 1382, 1435</span></td>
+            <td>12.0%</td><td>12.0%</td><td>24.0%</td><td>32.0%</td>
+            <td class="judgement good">0.0 / +8.0；合计 +4.0，非负提升</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Objects Layout（物体布局）</span><span class="task-ids">Tasks 1989, 1893, 1952, 1957, 1979</span></td>
+            <td>32.0%</td><td>48.0%</td><td>52.0%</td><td>56.0%</td>
+            <td class="judgement good">+16.0 / +4.0；合计 +10.0，一致提升</td>
+          </tr>
+          <tr>
+            <td><span class="dimension-name">Light Conditions（光照）</span><span class="task-ids">Tasks 2169, 2307, 2314, 2275, 2174</span></td>
+            <td>60.0%</td><td>68.0%</td><td>68.0%</td><td>68.0%</td>
+            <td class="judgement good">+8.0 / 0.0；合计 +4.0，非负提升</td>
+          </tr>
+          <tr class="total">
+            <td><span class="dimension-name">全部维度混合</span><span class="task-ids">35 tasks；350 episodes / arm</span></td>
+            <td>38.9%</td><td>37.1%</td><td>41.1%</td><td>44.0%</td>
+            <td class="judgement warn">-1.7 / +2.9；合计 +0.6，不一致</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <section class="notes">
+      <p><strong>稳定正向：</strong>Objects Layout 在两个 seed 上均提升，合计 <span class="good"><strong>+10.0 个百分点</strong></span>，是最值得继续验证的扰动。</p>
+      <p><strong>稳定负向：</strong>Background Textures 在两个 seed 上均下降，合计 <span class="bad"><strong>-12.0 个百分点</strong></span>，说明 critic 的背景视觉鲁棒性不足。</p>
+      <p><strong>总体结论：</strong>Baseline 40.0%，QGF 40.6%，仅多成功 2/350 次；配对 McNemar <strong>p=0.911</strong>，不能认定为显著提升。</p>
+    </section>
+
+    <p class="footnote">Critic：bc0p5_rank1_seed1；Spatial Q-return correlation=0.753，overall correlation=0.782，counterfactual ranking accuracy=0.690。最终任务与 critic 训练任务互斥，并经过 rough probe 与 10-episode confirmation probe。</p>
+  </main>
+</body>
+</html>

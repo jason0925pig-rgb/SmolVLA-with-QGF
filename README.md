@@ -1,50 +1,60 @@
-# SmolVLA with QGF - Encrypted Research Handoff
+# SmolVLA with QGF
 
-This repository stores an encrypted handoff package for the SmolVLA + Guided
-Action Flow (QGF) research project. The private package contains research notes,
-experiment results, server runbooks, and a source-code snapshot.
+This is the canonical repository for the SmolVLA baseline, Armstrong model
+deployment, Guided Action Flow (QGF), critic training, and baseline/QGF
+experiments. Hardware teleoperation and dataset capture live separately in
+[`One-Arm-Teleoperation`](https://github.com/jason0925pig-rgb/One-Arm-Teleoperation).
 
-The repository is public, but the handoff payload is encrypted with AES-256-GCM.
-The password is intentionally not stored in Git, in the README, or in the
-decryption script.
+## Repository layout
 
-## Decrypt
+- `qgf/`: Guided Action Flow and critic source, training/evaluation scripts,
+  tests, and algorithm notes.
+- `lerobot_robot_armstrong_ros2/`: LeRobot adapter for the Armstrong right arm.
+- `tools/`: SmolVLA training, validation, policy-server, Orin client, and
+  staged real-robot launchers.
+- `servo_controller/config/smolvla_first_rollout.yaml`: model-rollout safety
+  configuration. The ROS2 controller implementation remains in the teleop repo.
+- `docs/`: baseline training/deployment results and QGF documentation.
+- `experiments/`: LIBERO experiment clients, concise reports, and visual audits.
+- `SmolVLA_QGF_Handoff_2026-07-21.qgfpack`: legacy encrypted research snapshot.
 
-Requirements:
+## Armstrong dependency boundary
 
-- Python 3.10 or newer
-- `cryptography`
+On the Orin, the two repositories are expected to be siblings:
 
-```bash
-python -m pip install cryptography
-python handoff_crypto.py unpack SmolVLA_QGF_Handoff_2026-07-21.qgfpack --output handoff
+```text
+/home/nvidia/work/telop/
+├── One-Arm-Teleoperation/   # ROS2 hardware, camera and gripper nodes
+└── SmolVLA-with-QGF/        # model policy, adapter and rollout launcher
 ```
 
-The script asks for the password interactively, so the password does not enter
-the shell history. On success, begin with `handoff/docs/00_START_HERE.md`.
+The model launcher sources the ROS workspace from:
 
-## Verify Before Decrypting
+```bash
+export TELEOP_PROJECT_ROOT=/home/nvidia/work/telop/One-Arm-Teleoperation
+```
 
-Windows PowerShell:
+The default already points there. Override it only when the hardware workspace
+is installed elsewhere.
+
+## Run the current Orin baseline
+
+From Windows PowerShell:
 
 ```powershell
-Get-FileHash .\SmolVLA_QGF_Handoff_2026-07-21.qgfpack -Algorithm SHA256
+cd E:\AAA__Github_Project\SmolVLA-with-QGF
+.\tools\start_smolvla_orin.cmd
 ```
 
-Linux:
+The staged launcher does not move the robot until the operator explicitly
+passes the hardware checks and enters `ARM`, followed later by `MOVE`.
 
-```bash
-sha256sum SmolVLA_QGF_Handoff_2026-07-21.qgfpack
-```
+## Data and security
 
-Compare the output with `SHA256SUMS.txt`.
+Do not commit datasets, checkpoints, SSH keys, tokens, virtual environments,
+runtime outputs, or extracted private handoffs. These paths and common model
+weight formats are ignored. Keep large artifacts on the designated SSD/model
+storage and record their checksums and paths in documentation.
 
-## Security Notes
-
-- Do not commit the extracted `handoff/` directory.
-- Do not put SSH private keys, API tokens, Hugging Face tokens, or passwords in
-  this repository.
-- Transfer server credentials separately through a secure channel.
-- Anyone who knows the package password can decrypt the payload. Rotate the
-  password and replace the encrypted file if access must be revoked.
-
+See [`docs/LEGACY_ENCRYPTED_HANDOFF.md`](docs/LEGACY_ENCRYPTED_HANDOFF.md) for
+the older encrypted snapshot.

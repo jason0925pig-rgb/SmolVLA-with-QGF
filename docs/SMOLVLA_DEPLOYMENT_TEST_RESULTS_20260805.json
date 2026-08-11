@@ -1,0 +1,40 @@
+{
+  "status": "ok",
+  "checkpoint": "020000",
+  "physical_gpu": 4,
+  "robot_connected": false,
+  "offline_bundle_validation": {
+    "samples": 32,
+    "loss_mean": 0.0033049355552066118,
+    "joint_action_mae_rad": 0.009427831548005737,
+    "joint_action_max_abs_error_rad": 0.14722687005996704,
+    "gripper_binary_accuracy": 0.998125,
+    "maximum_demonstrated_envelope_overshoot": 0.010323792695999146,
+    "all_values_finite": true
+  },
+  "grpc_policy_server_smoke": {
+    "dataset_sample_index": 0,
+    "returned_action_shape": [10, 8],
+    "all_values_finite": true,
+    "action_min": [
+      -2.377260446548462,
+      0.29272499680519104,
+      0.10635624080896378,
+      -2.026796340942383,
+      4.3525567054748535,
+      -0.34932243824005127,
+      4.7868733406066895,
+      0.003928184509277344
+    ],
+    "action_max": [
+      -2.3736119270324707,
+      0.30283328890800476,
+      0.11071064323186874,
+      -2.01849365234375,
+      4.355529308319092,
+      -0.3473183214664459,
+      4.790342807769775,
+      0.009534865617752075
+    ]
+  }
+}
