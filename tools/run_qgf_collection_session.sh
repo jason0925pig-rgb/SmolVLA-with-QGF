@@ -7,7 +7,9 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
-# Set to a positive value only when an attended time limit is desired.\n# Zero disables time-based termination.\nROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-0}"
+# Set to a positive value only when an attended time limit is desired.
+# Zero disables time-based termination.
+ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-0}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
@@ -44,7 +46,8 @@ start_managed() {
   local pid_file="$1" log_file="$2"
   shift 2
   nohup setsid "$@" >"${log_file}" 2>&1 < /dev/null &
-  printf '%s\n' "$!" >"${pid_file}"
+  printf '%s
+' "$!" >"${pid_file}"
 }
 
 stop_managed() {
@@ -147,10 +150,12 @@ wait_observation_and_chunk() {
 call_trigger() {
   local service="$1" output
   output="$(timeout 20 ros2 service call "${service}" std_srvs/srv/Trigger '{}' 2>&1)" || {
-    printf '%s\n' "${output}" >&2
+    printf '%s
+' "${output}" >&2
     return 1
   }
-  printf '%s\n' "${output}"
+  printf '%s
+' "${output}"
   grep -Eq 'success[=:][[:space:]]*(true|True)' <<<"${output}"
 }
 
