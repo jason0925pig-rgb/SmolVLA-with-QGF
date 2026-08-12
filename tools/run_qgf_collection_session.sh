@@ -7,7 +7,8 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
-# Each attended round ends after this duration; power and enable remain on for S/F.\nROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-120}"
+# Each attended round ends after this duration; power and enable remain on for S/F.
+ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-120}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
