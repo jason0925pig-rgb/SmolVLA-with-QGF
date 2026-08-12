@@ -32,11 +32,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--repo-id", default="local/onearm_tele")
     parser.add_argument("--sample-index", type=int, default=0)
-    parser.add_argument(
-        "--synthetic-observation",
-        action="store_true",
-        help="Benchmark network inference with deterministic blank RGB images; no dataset/video decode.",
-    )
     parser.add_argument("--actions-per-chunk", type=int, default=10)
     parser.add_argument("--requests", type=int, default=1)
     parser.add_argument(
@@ -66,20 +61,13 @@ def main() -> int:
     if not (checkpoint / "config.json").is_file():
         raise FileNotFoundError(checkpoint / "config.json")
 
-    if args.synthetic_observation:
-        state = [0.0] * 8
-        chest_image = np.zeros((720, 1280, 3), dtype=np.uint8)
-        wrist_image = np.zeros((720, 1280, 3), dtype=np.uint8)
-    else:
-        dataset = LeRobotDataset(
-            repo_id=args.repo_id,
-            root=dataset_root,
-            video_backend=args.video_backend,
-        )
-        sample = dataset[args.sample_index]
-        state = sample["observation.state"].detach().float().cpu().tolist()
-        chest_image = image_to_uint8_hwc(sample["observation.images.chest"])
-        wrist_image = image_to_uint8_hwc(sample["observation.images.wrist_right"])
+    dataset = LeRobotDataset(
+        repo_id=args.repo_id,
+        root=dataset_root,
+        video_backend=args.video_backend,
+    )
+    sample = dataset[args.sample_index]
+    state = sample["observation.state"].detach().float().cpu().tolist()
     if len(state) != 8 or not all(math.isfinite(value) for value in state):
         raise RuntimeError(f"invalid test state: {state}")
 
@@ -99,8 +87,8 @@ def main() -> int:
     )
     raw_observation = {
         **dict(zip((*JOINT_NAMES, GRIPPER_NAME), state, strict=True)),
-        "chest": chest_image,
-        "wrist_right": wrist_image,
+        "chest": image_to_uint8_hwc(sample["observation.images.chest"]),
+        "wrist_right": image_to_uint8_hwc(sample["observation.images.wrist_right"]),
         "task": args.task,
     }
     channel = grpc.insecure_channel(

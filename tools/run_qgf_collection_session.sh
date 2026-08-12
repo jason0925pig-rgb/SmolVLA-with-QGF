@@ -7,10 +7,6 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
-# A rollout that is still active after this interval is not a hardware fault:
-# stop policy/servo motion, keep robot power and enable on, then let the
-# operator label the recorded round.  It can be overridden for diagnostics.
-ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-90}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
@@ -171,17 +167,6 @@ start_recorder() {
   }
 }
 
-prime_recorder_for_round() {
-  # A new recorder may attach after the policy has already preloaded its first
-  # 50-step action chunk. Explicitly replay the cached pair into the recorder
-  # rather than clearing/restarting model state or enabling robot motion.
-  # Both services publish telemetry only.
-  call_trigger /smolvla/replay_latest_normalized_chunk
-  call_trigger /smolvla/replay_latest_policy_observation
-  python3 "${PROJECT_ROOT}/tools/wait_for_qgf_recorder_ready.py" \
-    --staging "${CURRENT_STAGING}" --timeout 45
-}
-
 finalize_current() {
   local outcome="$1" termination_source="$2"
   "${SMOLVLA_ORIN_VENV}/bin/python" "${PROJECT_ROOT}/tools/finalize_qgf_episode.py" \
@@ -238,10 +223,9 @@ while (( SAVED < TARGET_EPISODES )); do
   ATTEMPT=$((ATTEMPT + 1))
   CURRENT_STAGING="${DATASET_ROOT}/.staging/$(date +%Y%m%d_%H%M%S)_attempt_$(printf '%04d' "${ATTEMPT}")"
   start_recorder
-  prime_recorder_for_round
 
   if (( ATTEMPT == 1 )); then
-    read -r -p "Recorder has current policy data. Type MOVE once to start episode 1: " answer
+    read -r -p "Type MOVE once to start episode 1: " answer
     [[ "${answer}" == "MOVE" ]] || exit 0
   else
     echo "NEXT_EPISODE_READY episode=$((SAVED + 1)); starting after the confirmed scene reset."
@@ -250,7 +234,7 @@ while (( SAVED < TARGET_EPISODES )); do
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" enable-policy
   monitor_log="${CURRENT_STAGING}/monitor.log"
   python3 "${PROJECT_ROOT}/tools/monitor_qgf_rollout.py" \
-    --startup-timeout 20 --timeout "${ROLLOUT_TIMEOUT_SECONDS}" >"${monitor_log}" 2>&1 &
+    --startup-timeout 20 --timeout 600 >"${monitor_log}" 2>&1 &
   MONITOR_PID=$!
   termination_source=""
   monitor_code=0
@@ -289,17 +273,6 @@ while (( SAVED < TARGET_EPISODES )); do
     wait "${MONITOR_PID}" 2>/dev/null || true
   fi
   MONITOR_PID=""
-
-  # A time-limited rollout is an attended, normal ending.  The monitor has
-  # already observed an active policy gate, so do not treat code 27 as a
-  # safety fault or invoke the EXIT trap that disables and powers off the arm.
-  # The common path below disables only policy/servo motion, then asks the
-  # operator whether this 90-second round is a success or failure.
-  if [[ "${termination_source}" == "episode_timeout" && "${monitor_code}" -eq 27 ]]; then
-    termination_source="episode_timeout_${ROLLOUT_TIMEOUT_SECONDS}s"
-    monitor_code=0
-    echo "Episode reached ${ROLLOUT_TIMEOUT_SECONDS}s. Policy motion will stop; robot power and enable stay on for your label."
-  fi
 
   if (( monitor_code != 0 )); then
     echo "ERROR: unsafe/abnormal rollout stop: ${termination_source} (code ${monitor_code})." >&2

@@ -152,17 +152,6 @@ def validate_capture(staging: Path) -> tuple[list[dict[str, Any]], dict[str, Any
         raise ValueError("no normalized SmolVLA action chunk was captured")
     if not policy_observations:
         raise ValueError("no policy observation was captured")
-    for name, video in summary.get("videos", {}).items():
-        received = int(video.get("frames_received", 0))
-        encoded = int(video.get("frames_encoded", 0))
-        dropped = int(video.get("frames_dropped", 0))
-        fps = float(video.get("source_effective_fps", 0.0))
-        if received < 2 or encoded != received or dropped != 0:
-            raise ValueError(
-                f"{name} video is incomplete: received={received} encoded={encoded} dropped={dropped}"
-            )
-        if not 27.0 <= fps <= 33.0:
-            raise ValueError(f"{name} source FPS {fps:.3f} is outside the required 30 FPS range")
     chunk_timesteps = {int(row["observation_timestep"]) for row in chunks}
     usable_observation_timesteps = {
         int(row["observation_timestep"])

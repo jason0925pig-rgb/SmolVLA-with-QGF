@@ -26,12 +26,6 @@ class ArmstrongRobotClient(RobotClient):
     the normal upstream timestamp aggregation overlaps old and new chunks.
     """
 
-    def __init__(self, config):
-        super().__init__(config)
-        # Set only when a must-go observation asks the policy for a replacement
-        # chunk.  It is diagnostic state; it cannot alter robot commands.
-        self._pending_chunk_request: tuple[int, int, float] | None = None
-
     def _sync_policy_queue_status(self) -> tuple[int, int, bool]:
         with self.action_queue_lock:
             queue_size = self.action_queue.qsize()
@@ -59,70 +53,11 @@ class ArmstrongRobotClient(RobotClient):
         self._sync_policy_queue_status()
         return available
 
-    def _aggregate_action_queues(self, incoming_actions, aggregate_fn=None):
-        """Keep upstream timestep alignment and emit auditable chunk metrics.
-
-        The parent implementation discards actions that have already executed,
-        replaces overlapping timesteps using the configured aggregate function,
-        and keeps only future actions.  These counters make that behavior
-        visible in the live policy-client log without changing it.
-        """
-        with self.latest_action_lock:
-            latest_action = self.latest_action
-        with self.action_queue_lock:
-            queued_steps = {action.get_timestep() for action in self.action_queue.queue}
-
-        stale = sum(action.get_timestep() <= latest_action for action in incoming_actions)
-        overlap = sum(
-            action.get_timestep() > latest_action
-            and action.get_timestep() in queued_steps
-            for action in incoming_actions
-        )
-        future = len(incoming_actions) - stale
-        super()._aggregate_action_queues(incoming_actions, aggregate_fn)
-
-        with self.action_queue_lock:
-            retained = self.action_queue.qsize()
-        request = self._pending_chunk_request
-        self._pending_chunk_request = None
-        chunk_age_ms = (
-            (time.time() - incoming_actions[0].get_timestamp()) * 1000.0
-            if incoming_actions
-            else float("nan")
-        )
-        if request is None:
-            self.logger.info(
-                "POLICY_CHUNK_RECEIVED source=preload actions=%s retained=%s "
-                "stale_dropped=%s overlap_replaced=%s timestamp_age_ms=%.1f",
-                len(incoming_actions), retained, stale, overlap, chunk_age_ms,
-            )
-            return
-
-        observation_step, queue_at_request, request_time = request
-        self.logger.info(
-            "POLICY_CHUNK_RECEIVED source=early_request observation_step=%s "
-            "queue_at_request=%s actions=%s retained=%s stale_dropped=%s "
-            "overlap_replaced=%s future_actions=%s response_wait_ms=%.1f "
-            "timestamp_age_ms=%.1f",
-            observation_step, queue_at_request, len(incoming_actions), retained,
-            stale, overlap, future,
-            (time.monotonic() - request_time) * 1000.0,
-            chunk_age_ms,
-        )
-
     def _ready_to_send_observation(self):
         # Before the operator enables policy motion, retain the complete first
         # chunk instead of consuming or continuously replacing it.  This makes
         # the MOVE prompt mean exactly "50 executable actions are preloaded".
         if not self.robot.action_enabled and self.actions_available():
-            return False
-        # A must-go replacement is already being computed. Sending ordinary
-        # 15/30 Hz observations during that interval only creates redundant
-        # gRPC/JPEG work: the server has a one-item queue and would discard or
-        # supersede those frames, while the in-flight result remains the only
-        # useful replacement chunk. Wait for it to arrive, then request the
-        # next aligned chunk after an action has executed.
-        if self._pending_chunk_request is not None:
             return False
         return super()._ready_to_send_observation()
 
@@ -158,31 +93,13 @@ class ArmstrongRobotClient(RobotClient):
                 )
             if not self.running:
                 return None
-            # Register timing before the RPC: on loopback an FP16 response can
-            # arrive quickly enough for the receiver thread to run first.
-            if observation.must_go:
-                self._pending_chunk_request = (
-                    observation.get_timestep(),
-                    current_queue_size,
-                    time.monotonic(),
-                )
             sent = self.send_observation(observation)
             if sent:
                 self.robot.publish_policy_observation(
                     observation.get_timestep(), raw_observation
                 )
             if sent and observation.must_go:
-                self.logger.info(
-                    "POLICY_CHUNK_REQUEST observation_step=%s queue=%s/%s "
-                    "threshold=%.3f",
-                    observation.get_timestep(),
-                    current_queue_size,
-                    self.action_chunk_size,
-                    self._chunk_size_threshold,
-                )
                 self.must_go.clear()
-            elif observation.must_go:
-                self._pending_chunk_request = None
             if verbose:
                 elapsed = time.perf_counter() - start_time
                 self.logger.info(

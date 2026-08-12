@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import queue
 import signal
 import struct
-import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,15 +63,7 @@ def message_timestamp_ns(message: JointState) -> int:
 
 
 class VideoSink:
-    """Asynchronously preserve every ROS JPEG and encode a real-time MP4.
-
-    ROS camera callbacks must never JPEG-decode or MP4-encode: doing that in
-    the executor was the reason 30 FPS camera topics previously became
-    14--15 FPS videos labelled as 30 FPS.  Frame IDs are allocated at receipt
-    time, while one FIFO worker per camera performs disk/codec work.
-    """
-
-    def __init__(self, path: Path, fps: float, queue_size: int = 600):
+    def __init__(self, path: Path, fps: float):
         self.path = path
         self.fps = fps
         self.writer: cv2.VideoWriter | None = None
@@ -82,64 +72,21 @@ class VideoSink:
         self.height = 0
         self.latest_timestamp_ns = 0
         self.latest_frame_index = -1
-        self.received_frame_count = 0
-        self.dropped_frame_count = 0
-        self.first_timestamp_ns = 0
-        self.last_timestamp_ns = 0
-        self._worker_error: BaseException | None = None
-        self._queue: queue.Queue[tuple[int, int, bytes] | None] = queue.Queue(maxsize=queue_size)
-        self._closed = False
         # Preserve the exact JPEG byte stream received from ROS in addition
         # to the convenient MP4.  The length-prefixed archive is future-proof
         # input for a frozen SmolVLA/VLM visual encoder and avoids an extra
         # lossy encode/decode when visual_features are computed later.
         self.archive_path = path.with_suffix(".mjpeg")
         self.archive = self.archive_path.open("wb")
-        self._thread = threading.Thread(
-            target=self._run,
-            name=f"qgf-video-{path.stem}",
-            daemon=False,
-        )
-        self._thread.start()
 
-    def enqueue(self, message: CompressedImage) -> None:
-        """Return immediately from the ROS callback after FIFO enqueue."""
-        if self._closed:
+    def write(self, message: CompressedImage) -> None:
+        encoded = np.frombuffer(bytes(message.data), dtype=np.uint8)
+        frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if frame is None:
             return
         stamp = message.header.stamp
         timestamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
-        if timestamp_ns <= 0:
-            timestamp_ns = time.time_ns()
-        frame_index = self.received_frame_count
-        self.received_frame_count += 1
-        self.latest_frame_index = frame_index
-        self.latest_timestamp_ns = timestamp_ns
-        if self.first_timestamp_ns == 0:
-            self.first_timestamp_ns = timestamp_ns
-        self.last_timestamp_ns = timestamp_ns
-        try:
-            self._queue.put_nowait((frame_index, timestamp_ns, bytes(message.data)))
-        except queue.Full:
-            self.dropped_frame_count += 1
-
-    def _run(self) -> None:
-        while True:
-            item = self._queue.get()
-            try:
-                if item is None:
-                    return
-                frame_index, timestamp_ns, payload = item
-                self._write(frame_index, timestamp_ns, payload)
-            except BaseException as exc:  # Surface encoder failures at finalization.
-                self._worker_error = exc
-            finally:
-                self._queue.task_done()
-
-    def _write(self, frame_index: int, timestamp_ns: int, payload: bytes) -> None:
-        encoded = np.frombuffer(payload, dtype=np.uint8)
-        frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-        if frame is None:
-            raise RuntimeError(f"cannot decode JPEG frame {frame_index} for {self.path}")
+        payload = bytes(message.data)
         self.archive.write(struct.pack("<QI", timestamp_ns, len(payload)))
         self.archive.write(payload)
         height, width = frame.shape[:2]
@@ -156,45 +103,15 @@ class VideoSink:
         elif (width, height) != (self.width, self.height):
             frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         self.writer.write(frame)
+        self.latest_frame_index = self.frame_count
         self.frame_count += 1
+        self.latest_timestamp_ns = timestamp_ns
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._queue.put(None)
-        self._thread.join()
         if self.writer is not None:
             self.writer.release()
             self.writer = None
         self.archive.close()
-        if self._worker_error is not None:
-            raise RuntimeError(f"video worker failed for {self.path}: {self._worker_error}")
-
-    def summary(self) -> dict[str, Any]:
-        elapsed_s = (
-            (self.last_timestamp_ns - self.first_timestamp_ns) / 1_000_000_000
-            if self.last_timestamp_ns > self.first_timestamp_ns
-            else 0.0
-        )
-        effective_fps = (
-            (self.received_frame_count - 1) / elapsed_s
-            if elapsed_s > 0 and self.received_frame_count > 1
-            else 0.0
-        )
-        return {
-            "path": self.path.name,
-            "exact_jpeg_archive": self.archive_path.name,
-            "frames_received": self.received_frame_count,
-            "frames_encoded": self.frame_count,
-            "frames_dropped": self.dropped_frame_count,
-            "width": self.width,
-            "height": self.height,
-            "container_fps": self.fps,
-            "source_effective_fps": effective_fps,
-            "first_timestamp_ns": self.first_timestamp_ns,
-            "last_timestamp_ns": self.last_timestamp_ns,
-        }
 
 
 class QgfEpisodeRecorder(Node):
@@ -413,12 +330,12 @@ class QgfEpisodeRecorder(Node):
     def _chest_cb(self, message: CompressedImage) -> None:
         self.callback_counts["chest"] += 1
         if self.action_enabled:
-            self.chest.enqueue(message)
+            self.chest.write(message)
 
     def _wrist_cb(self, message: CompressedImage) -> None:
         self.callback_counts["wrist"] += 1
         if self.action_enabled:
-            self.wrist.enqueue(message)
+            self.wrist.write(message)
 
     def _sample(self) -> None:
         if not self.action_enabled:
@@ -481,8 +398,22 @@ class QgfEpisodeRecorder(Node):
             },
             "action_gate_was_enabled": self.ever_enabled,
             "videos": {
-                "chest": self.chest.summary(),
-                "wrist_right": self.wrist.summary(),
+                "chest": {
+                    "path": "chest.mp4",
+                    "exact_jpeg_archive": "chest.mjpeg",
+                    "frames": self.chest.frame_count,
+                    "width": self.chest.width,
+                    "height": self.chest.height,
+                    "fps": self.chest.fps,
+                },
+                "wrist_right": {
+                    "path": "wrist_right.mp4",
+                    "exact_jpeg_archive": "wrist_right.mjpeg",
+                    "frames": self.wrist.frame_count,
+                    "width": self.wrist.width,
+                    "height": self.wrist.height,
+                    "fps": self.wrist.fps,
+                },
             },
         }
         (self.output_dir / "capture_summary.json").write_text(
