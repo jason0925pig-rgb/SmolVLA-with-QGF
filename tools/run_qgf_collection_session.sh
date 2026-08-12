@@ -7,6 +7,10 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
+# A rollout that is still active after this interval is not a hardware fault:
+# stop policy/servo motion, keep robot power and enable on, then let the
+# operator label the recorded round.  It can be overridden for diagnostics.
+ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-90}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
@@ -234,7 +238,7 @@ while (( SAVED < TARGET_EPISODES )); do
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" enable-policy
   monitor_log="${CURRENT_STAGING}/monitor.log"
   python3 "${PROJECT_ROOT}/tools/monitor_qgf_rollout.py" \
-    --startup-timeout 20 --timeout 600 >"${monitor_log}" 2>&1 &
+    --startup-timeout 20 --timeout "${ROLLOUT_TIMEOUT_SECONDS}" >"${monitor_log}" 2>&1 &
   MONITOR_PID=$!
   termination_source=""
   monitor_code=0
@@ -273,6 +277,17 @@ while (( SAVED < TARGET_EPISODES )); do
     wait "${MONITOR_PID}" 2>/dev/null || true
   fi
   MONITOR_PID=""
+
+  # A time-limited rollout is an attended, normal ending.  The monitor has
+  # already observed an active policy gate, so do not treat code 27 as a
+  # safety fault or invoke the EXIT trap that disables and powers off the arm.
+  # The common path below disables only policy/servo motion, then asks the
+  # operator whether this 90-second round is a success or failure.
+  if [[ "${termination_source}" == "episode_timeout" && "${monitor_code}" -eq 27 ]]; then
+    termination_source="episode_timeout_${ROLLOUT_TIMEOUT_SECONDS}s"
+    monitor_code=0
+    echo "Episode reached ${ROLLOUT_TIMEOUT_SECONDS}s. Policy motion will stop; robot power and enable stay on for your label."
+  fi
 
   if (( monitor_code != 0 )); then
     echo "ERROR: unsafe/abnormal rollout stop: ${termination_source} (code ${monitor_code})." >&2

@@ -47,7 +47,7 @@ safe_one_arm_servo:
     # Joint-position limits, the policy target-error guard, the acceleration
     # ramp below, SDK/controller limits and the physical E-stop remain active.
     max_velocity_rad_s: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
-    max_acceleration_rad_s2: [0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50]
+    max_acceleration_rad_s2: [0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70]
 
 safe_gripper_controller:
   ros__parameters:
