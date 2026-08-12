@@ -24,6 +24,9 @@ export SMOLVLA_TMP_ROOT="${SMOLVLA_ORIN_ROOT}/tmp/smolvla"
 # drivers remain independently configured and verified at 30 FPS; lowering
 # this value does not change either camera stream or the recorded video FPS.
 export SMOLVLA_FPS="${SMOLVLA_FPS:-15}"
+# The deployed SmolVLA checkpoint remains stored in FP32, while inference uses
+# CUDA AMP FP16 Tensor Core kernels.  Set this to fp32 for an exact fallback.
+export SMOLVLA_INFERENCE_DTYPE="${SMOLVLA_INFERENCE_DTYPE:-fp16}"
 
 # The checkpoint produces 50 actions. Orin warm inference measured
 # Recent on-robot inference takes about 1.6-1.8 s.  Fifty actions cover 3.33 s
