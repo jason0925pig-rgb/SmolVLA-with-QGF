@@ -31,9 +31,10 @@ export SMOLVLA_INFERENCE_DTYPE="${SMOLVLA_INFERENCE_DTYPE:-fp16}"
 # In FP16 AMP, a warm 50-action chunk measured about 0.92 s. At 30 Hz, one
 # chunk covers 1.67 s; the asynchronous client requests a replacement early.
 export SMOLVLA_ACTIONS_PER_CHUNK="${SMOLVLA_ACTIONS_PER_CHUNK:-50}"
-# Request a replacement with roughly 35/50 actions still queued (about 1.17 s
-# at 30 Hz), leaving margin over the measured ~0.92 s warm FP16 inference.
-export SMOLVLA_CHUNK_SIZE_THRESHOLD="${SMOLVLA_CHUNK_SIZE_THRESHOLD:-0.70}"
+# Request a replacement immediately after the first of 50 actions executes.
+# The subsequent response is timestep-aligned: already executed actions are
+# dropped; future and overlapping actions replace the remaining queue.
+export SMOLVLA_CHUNK_SIZE_THRESHOLD="${SMOLVLA_CHUNK_SIZE_THRESHOLD:-0.98}"
 export SMOLVLA_VIDEO_BACKEND="${SMOLVLA_VIDEO_BACKEND:-pyav}"
 export SMOLVLA_STATE_TIMEOUT_SECONDS="${SMOLVLA_STATE_TIMEOUT_SECONDS:-1.0}"
 export SMOLVLA_CAMERA_TIMEOUT_SECONDS="${SMOLVLA_CAMERA_TIMEOUT_SECONDS:-1.0}"
