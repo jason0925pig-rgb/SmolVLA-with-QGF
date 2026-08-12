@@ -10,7 +10,7 @@ TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
 # A rollout that is still active after this interval is not a hardware fault:
 # stop policy/servo motion, keep robot power and enable on, then let the
 # operator label the recorded round.  It can be overridden for diagnostics.
-ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-90}"
+ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-120}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
@@ -282,7 +282,7 @@ while (( SAVED < TARGET_EPISODES )); do
   # already observed an active policy gate, so do not treat code 27 as a
   # safety fault or invoke the EXIT trap that disables and powers off the arm.
   # The common path below disables only policy/servo motion, then asks the
-  # operator whether this 90-second round is a success or failure.
+  # operator whether this 120-second round is a success or failure.
   if [[ "${termination_source}" == "episode_timeout" && "${monitor_code}" -eq 27 ]]; then
     termination_source="episode_timeout_${ROLLOUT_TIMEOUT_SECONDS}s"
     monitor_code=0
