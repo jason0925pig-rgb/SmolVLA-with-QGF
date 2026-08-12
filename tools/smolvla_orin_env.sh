@@ -20,20 +20,20 @@ export SMOLVLA_CLIENT_VENV="${SMOLVLA_ORIN_VENV}"
 export SMOLVLA_SERVER_MODEL_PATH="${SMOLVLA_ORIN_BUNDLE}/checkpoint"
 export SMOLVLA_CACHE_ROOT="${SMOLVLA_ORIN_ROOT}/cache/smolvla"
 export SMOLVLA_TMP_ROOT="${SMOLVLA_ORIN_ROOT}/tmp/smolvla"
-# Policy action production/consumption runs at 15 Hz.  The two ROS camera
-# drivers remain independently configured and verified at 30 FPS; lowering
-# this value does not change either camera stream or the recorded video FPS.
-export SMOLVLA_FPS="${SMOLVLA_FPS:-15}"
+# Policy action production/consumption runs at 30 Hz and uses the latest two
+# 30 FPS RGB observations. The low-level JAKA servo loop remains at 125 Hz.
+export SMOLVLA_FPS="${SMOLVLA_FPS:-30}"
 # The deployed SmolVLA checkpoint remains stored in FP32, while inference uses
 # CUDA AMP FP16 Tensor Core kernels.  Set this to fp32 for an exact fallback.
 export SMOLVLA_INFERENCE_DTYPE="${SMOLVLA_INFERENCE_DTYPE:-fp16}"
 
 # The checkpoint produces 50 actions. Orin warm inference measured
-# Recent on-robot inference takes about 1.6-1.8 s.  Fifty actions cover 3.33 s
-# at 15 Hz, leaving enough queued actions for asynchronous chunk replacement
-# and a smoother hand-off while both cameras continue running at 30 FPS.
+# In FP16 AMP, a warm 50-action chunk measured about 0.92 s. At 30 Hz, one
+# chunk covers 1.67 s; the asynchronous client requests a replacement early.
 export SMOLVLA_ACTIONS_PER_CHUNK="${SMOLVLA_ACTIONS_PER_CHUNK:-50}"
-export SMOLVLA_CHUNK_SIZE_THRESHOLD="${SMOLVLA_CHUNK_SIZE_THRESHOLD:-1.0}"
+# Request a replacement with roughly 35/50 actions still queued (about 1.17 s
+# at 30 Hz), leaving margin over the measured ~0.92 s warm FP16 inference.
+export SMOLVLA_CHUNK_SIZE_THRESHOLD="${SMOLVLA_CHUNK_SIZE_THRESHOLD:-0.70}"
 export SMOLVLA_VIDEO_BACKEND="${SMOLVLA_VIDEO_BACKEND:-pyav}"
 export SMOLVLA_STATE_TIMEOUT_SECONDS="${SMOLVLA_STATE_TIMEOUT_SECONDS:-1.0}"
 export SMOLVLA_CAMERA_TIMEOUT_SECONDS="${SMOLVLA_CAMERA_TIMEOUT_SECONDS:-1.0}"
