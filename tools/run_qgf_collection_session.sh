@@ -171,6 +171,17 @@ start_recorder() {
   }
 }
 
+prime_recorder_for_round() {
+  # The recorder starts after the client has preloaded a chunk. Clear that old
+  # queue so the client publishes a new normalized chunk and a matching policy
+  # observation after this recorder has subscribed. This prevents a brief
+  # attended F/END round from failing finalization merely because it missed a
+  # transient-local publisher's already-published startup artifact.
+  call_trigger /smolvla/reset_episode
+  python3 "${PROJECT_ROOT}/tools/wait_for_qgf_recorder_ready.py" \
+    --staging "${CURRENT_STAGING}" --timeout 45
+}
+
 finalize_current() {
   local outcome="$1" termination_source="$2"
   "${SMOLVLA_ORIN_VENV}/bin/python" "${PROJECT_ROOT}/tools/finalize_qgf_episode.py" \
@@ -227,9 +238,10 @@ while (( SAVED < TARGET_EPISODES )); do
   ATTEMPT=$((ATTEMPT + 1))
   CURRENT_STAGING="${DATASET_ROOT}/.staging/$(date +%Y%m%d_%H%M%S)_attempt_$(printf '%04d' "${ATTEMPT}")"
   start_recorder
+  prime_recorder_for_round
 
   if (( ATTEMPT == 1 )); then
-    read -r -p "Type MOVE once to start episode 1: " answer
+    read -r -p "Recorder has current policy data. Type MOVE once to start episode 1: " answer
     [[ "${answer}" == "MOVE" ]] || exit 0
   else
     echo "NEXT_EPISODE_READY episode=$((SAVED + 1)); starting after the confirmed scene reset."
