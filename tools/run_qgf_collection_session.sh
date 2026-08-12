@@ -7,10 +7,7 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
-# A rollout that is still active after this interval is not a hardware fault:
-# stop policy/servo motion, keep robot power and enable on, then let the
-# operator label the recorded round.  It can be overridden for diagnostics.
-ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-600}"
+# Set to a positive value only when an attended time limit is desired.\n# Zero disables time-based termination.\nROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-0}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"

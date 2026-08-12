@@ -58,7 +58,7 @@ class Monitor(Node):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--startup-timeout", type=float, default=20.0)
-    parser.add_argument("--timeout", type=float, default=600.0)
+    parser.add_argument("--timeout", type=float, default=0.0, help="Seconds; <=0 disables time-based termination.")
     args = parser.parse_args()
     rclpy.init(args=None)
     node = Monitor()
@@ -75,7 +75,7 @@ def main() -> int:
             if not node.seen_enabled and elapsed > args.startup_timeout:
                 print("QGF_ROLLOUT_MONITOR source=action_gate_never_enabled", flush=True)
                 return 26
-            if elapsed > args.timeout:
+            if args.timeout > 0 and elapsed > args.timeout:
                 print("QGF_ROLLOUT_MONITOR source=episode_timeout", flush=True)
                 return 27
     finally:
