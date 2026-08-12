@@ -11,7 +11,8 @@ import os
 
 import torch
 
-from lerobot.async_inference.policy_server import PolicyServer, serve
+from lerobot.async_inference.policy_server import PolicyServer
+from lerobot_robot_armstrong_ros2.policy_server_telemetry import serve
 
 
 _STOCK_GET_ACTION_CHUNK = PolicyServer._get_action_chunk
@@ -44,6 +45,11 @@ def _get_action_chunk_with_amp(self: PolicyServer, observation: dict[str, torch.
         return _STOCK_GET_ACTION_CHUNK(self, observation)
 
 
+# TelemetryPolicyServer deliberately inherits the stock PolicyServer, so
+# patching this base method preserves its ROS-only normalized-chunk publisher
+# while adding AMP around the actual model inference.  Importing stock `serve`
+# here would silently bypass that telemetry subclass and make a QGF recorder
+# wait forever for /smolvla/normalized_action_chunk.
 PolicyServer._get_action_chunk = _get_action_chunk_with_amp
 
 

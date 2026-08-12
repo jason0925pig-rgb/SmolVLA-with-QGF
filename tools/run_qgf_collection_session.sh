@@ -172,12 +172,12 @@ start_recorder() {
 }
 
 prime_recorder_for_round() {
-  # The recorder starts after the client has preloaded a chunk. Clear that old
-  # queue so the client publishes a new normalized chunk and a matching policy
-  # observation after this recorder has subscribed. This prevents a brief
-  # attended F/END round from failing finalization merely because it missed a
-  # transient-local publisher's already-published startup artifact.
-  call_trigger /smolvla/reset_episode
+  # A new recorder may attach after the policy has already preloaded its first
+  # 50-step action chunk. Explicitly replay the cached pair into the recorder
+  # rather than clearing/restarting model state or enabling robot motion.
+  # Both services publish telemetry only.
+  call_trigger /smolvla/replay_latest_normalized_chunk
+  call_trigger /smolvla/replay_latest_policy_observation
   python3 "${PROJECT_ROOT}/tools/wait_for_qgf_recorder_ready.py" \
     --staging "${CURRENT_STAGING}" --timeout 45
 }

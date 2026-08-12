@@ -87,6 +87,7 @@ class ArmstrongRos2(Robot):
         self._rollout_end_logged = False
         self._episode_reset_callback = None
         self._latest_policy_observation_timestep = -1
+        self._latest_policy_observation_message = None
         self._current_policy_action_timestep = -1
         self._owns_rclpy_context = False
         self._guard_config = PolicySafetyConfig(
@@ -267,6 +268,11 @@ class ArmstrongRos2(Robot):
         self._node.create_service(SetBool, self.config.enable_service, self._set_enabled)
         self._node.create_service(
             Trigger, "/smolvla/reset_episode", self._reset_episode_service
+        )
+        self._node.create_service(
+            Trigger,
+            "/smolvla/replay_latest_policy_observation",
+            self._replay_latest_policy_observation_service,
         )
         self._node.create_timer(0.5, self._publish_status)
         self._executor = SingleThreadedExecutor()
@@ -610,8 +616,27 @@ class ArmstrongRos2(Robot):
         message.header.frame_id = str(int(timestep))
         message.name = [*JOINT_NAMES, GRIPPER_NAME]
         message.position = values
+        self._latest_policy_observation_message = message
         self._policy_observation_pub.publish(message)
         self._latest_policy_observation_timestep = int(timestep)
+
+    def _replay_latest_policy_observation_service(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        """Republish cached inference input for a newly attached recorder.
+
+        This service emits a telemetry topic only; it does not alter the
+        policy queue, action gate, joint target, gripper, power or enable.
+        """
+        message = self._latest_policy_observation_message
+        if message is None:
+            response.success = False
+            response.message = "no policy observation has been sent yet"
+            return response
+        self._policy_observation_pub.publish(message)
+        response.success = True
+        response.message = "replayed latest policy observation"
+        return response
 
     def _update_task_completion(
         self,

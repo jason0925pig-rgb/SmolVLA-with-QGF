@@ -10,6 +10,7 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
+from std_srvs.srv import Trigger
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from lerobot.async_inference.configs import PolicyServerConfig
@@ -41,6 +42,11 @@ class TelemetryPolicyServer(PolicyServer):
         self._normalized_chunk_pub = self._telemetry_node.create_publisher(
             JointTrajectory, "/smolvla/normalized_action_chunk", qos
         )
+        self._telemetry_node.create_service(
+            Trigger,
+            "/smolvla/replay_latest_normalized_chunk",
+            self._replay_latest_normalized_chunk,
+        )
         self._telemetry_executor = SingleThreadedExecutor()
         self._telemetry_executor.add_node(self._telemetry_node)
         self._telemetry_thread = threading.Thread(
@@ -48,7 +54,25 @@ class TelemetryPolicyServer(PolicyServer):
         )
         self._telemetry_thread.start()
         self._normalized_chunk = None
+        self._latest_normalized_chunk_message = None
         self._chunk_lock = threading.Lock()
+
+    def _replay_latest_normalized_chunk(self, _request, response):
+        """Replay the cached pre-motion chunk for a newly started recorder.
+
+        This is passive telemetry only.  It neither asks the model to infer
+        nor reaches any robot command topic.
+        """
+        with self._chunk_lock:
+            message = self._latest_normalized_chunk_message
+        if message is None:
+            response.success = False
+            response.message = "no normalized policy chunk has been produced yet"
+            return response
+        self._normalized_chunk_pub.publish(message)
+        response.success = True
+        response.message = "replayed latest normalized policy chunk"
+        return response
 
     def _get_action_chunk(self, observation):
         chunk = super()._get_action_chunk(observation)
@@ -70,6 +94,8 @@ class TelemetryPolicyServer(PolicyServer):
                 point = JointTrajectoryPoint()
                 point.positions = [float(value) for value in row.tolist()]
                 message.points.append(point)
+            with self._chunk_lock:
+                self._latest_normalized_chunk_message = message
             self._normalized_chunk_pub.publish(message)
         return actions
 
