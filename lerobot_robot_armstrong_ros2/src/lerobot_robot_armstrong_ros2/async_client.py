@@ -116,6 +116,14 @@ class ArmstrongRobotClient(RobotClient):
         # the MOVE prompt mean exactly "50 executable actions are preloaded".
         if not self.robot.action_enabled and self.actions_available():
             return False
+        # A must-go replacement is already being computed. Sending ordinary
+        # 15/30 Hz observations during that interval only creates redundant
+        # gRPC/JPEG work: the server has a one-item queue and would discard or
+        # supersede those frames, while the in-flight result remains the only
+        # useful replacement chunk. Wait for it to arrive, then request the
+        # next aligned chunk after an action has executed.
+        if self._pending_chunk_request is not None:
+            return False
         return super()._ready_to_send_observation()
 
     def control_loop_observation(self, task: str, verbose: bool = False):
