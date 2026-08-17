@@ -5,8 +5,6 @@ only changes the normalized SmolVLA action chunk inside the existing gRPC
 policy server; the attended ROS client and its safety gates remain unchanged.
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
