@@ -73,17 +73,17 @@ class ArmstrongRos2Config(RobotConfig):
     gripper_min_state_dwell_seconds: float = 2.0
     gripper_contact_hold_seconds: float = 3.0
 
-    # Learned-return completion detector. The fixed home pose is the attended
-    # 2026-08-07 endpoint selected by the operator, using its unrounded robot
-    # feedback rather than the two-decimal values shown in the screenshot.
+    # Learned-return completion detector. The fixed completion pose is the
+    # attended QGF endpoint recorded from unrounded robot feedback on
+    # 2026-08-17, rather than the old manual return-pose screenshot.
     completion_home_joints: tuple[float, ...] = (
-        -2.370767,
-        0.275709,
-        0.038841,
-        -2.055510,
-        4.440476,
-        -0.314679,
-        4.712930,
+        -2.239138,
+        0.244548,
+        -0.333541,
+        -1.957744,
+        4.331510,
+        -0.664156,
+        4.742997,
     )
     completion_departure_threshold_rad: float = 0.40
     completion_return_tolerance_rad: float = 0.17453292519943295  # 10 degrees
