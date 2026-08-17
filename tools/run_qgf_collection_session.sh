@@ -11,6 +11,8 @@ TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
 ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-180}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
+RUN_MODE="${QGF_RUN_MODE:-baseline}"
+QGF_BETA="${QGF_BETA:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
 RUNTIME_DIR="/tmp/one_arm_smolvla_${UID}"
@@ -188,10 +190,35 @@ fi
 [[ "${TARGET_EPISODES}" =~ ^[1-9][0-9]*$ ]] || {
   echo "ERROR: QGF_EPISODE_COUNT must be a positive integer." >&2; exit 2;
 }
+case "${RUN_MODE}" in
+  baseline)
+    export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_telemetry"
+    ;;
+  qgf)
+    python3 - "${QGF_BETA}" <<'PY'
+import math
+import sys
+beta = float(sys.argv[1])
+if not math.isfinite(beta) or beta <= 0.0:
+    raise SystemExit("ERROR: QGF_BETA must be a finite positive value in qgf mode.")
+print(f"QGF_CONFIG beta={beta:.8g} coefficient=1/beta={1.0 / beta:.8g}")
+PY
+    export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_qgf"
+    export SMOLVLA_QGF_BETA="${QGF_BETA}"
+    export SMOLVLA_QGF_GRAD_CLIP_NORM="${SMOLVLA_QGF_GRAD_CLIP_NORM:-1.0}"
+    [[ -f "${SMOLVLA_QGF_CRITIC_PATH}" ]] || {
+      echo "ERROR: QGF critic checkpoint is missing: ${SMOLVLA_QGF_CRITIC_PATH}" >&2; exit 2;
+    }
+    ;;
+  *)
+    echo "ERROR: QGF_RUN_MODE must be baseline or qgf, got ${RUN_MODE}." >&2; exit 2;
+    ;;
+esac
 
 echo "============================================================"
 echo "Continuous real-robot QGF collection"
 echo "Task: ${TASK}"
+echo "Policy mode: ${RUN_MODE}"
 echo "Target kept episodes: ${TARGET_EPISODES}"
 echo "ARM and MOVE are entered only once. Power/model/cameras stay up between rounds."
 echo "Ctrl+C, physical E-stop, protective stop, controller error or unexpected gate loss"
@@ -205,7 +232,8 @@ echo "============================================================"
 
 : >"${SERVER_LOG}"
 : >"${CLIENT_LOG}"
-export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_telemetry"
+# The server module was selected above from QGF_RUN_MODE.  Do not overwrite it
+# here: doing so would silently turn a requested QGF rollout into baseline.
 start_managed "${SERVER_PID_FILE}" "${SERVER_LOG}" \
   "${PROJECT_ROOT}/tools/start_smolvla_orin_policy_server.sh"
 wait_for_server

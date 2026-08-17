@@ -16,6 +16,61 @@ OBS_LANGUAGE_TOKENS = "observation.language.tokens"
 OBS_LANGUAGE_ATTENTION_MASK = "observation.language.attention_mask"
 
 
+class SmolVLAVisualCriticAdapter:
+    """Adapt the visual IQL critic to the generic QGF critic call signature.
+
+    The real-robot critic is trained on frozen image tokens from the deployed
+    SmolVLA image encoder.  At runtime those tokens belong to the current
+    policy observation, while QGF supplies the differentiable action chunk.
+    This adapter keeps the visual tokens fixed and preserves gradients only
+    with respect to the proposed action chunk.
+    """
+
+    def __init__(self, critic):
+        self.critic = critic
+        self._visual_tokens = None
+
+    def set_visual_tokens(self, visual_tokens) -> None:
+        self._visual_tokens = visual_tokens.detach()
+
+    def __call__(self, *, obs_features, action_chunk, proprio=None, task_features=None):
+        del proprio, task_features
+        if self._visual_tokens is None:
+            raise RuntimeError("QGF visual tokens were not prepared for this observation.")
+        if self._visual_tokens.shape[0] != obs_features.shape[0]:
+            raise RuntimeError(
+                "QGF visual-token batch size does not match proprioception: "
+                f"{self._visual_tokens.shape[0]} != {obs_features.shape[0]}."
+            )
+        return self.critic.module(obs_features, self._visual_tokens, action_chunk)
+
+
+def encode_smolvla_visual_tokens(policy, batch):
+    """Encode the two deployed camera views exactly as offline IQL did."""
+
+    import torch
+
+    with torch.no_grad():
+        images, _ = policy.prepare_images(batch)
+        if len(images) != 2:
+            raise RuntimeError(
+                "Real-robot QGF requires exactly two image views (chest and wrist); "
+                f"SmolVLA received {len(images)}."
+            )
+        chest_tokens = policy.model.vlm_with_expert.embed_image(images[0])
+        wrist_tokens = policy.model.vlm_with_expert.embed_image(images[1])
+        tokens = torch.cat((chest_tokens, wrist_tokens), dim=1).detach()
+    adapter = getattr(policy, "_gaf_visual_critic", None)
+    expected = getattr(adapter, "critic", adapter)
+    config = getattr(expected, "config", None)
+    if config is not None and tuple(tokens.shape[1:]) != (config.visual_tokens, config.visual_token_dim):
+        raise RuntimeError(
+            "Runtime SmolVLA visual-token shape differs from the trained critic: "
+            f"{tuple(tokens.shape[1:])} != {(config.visual_tokens, config.visual_token_dim)}."
+        )
+    return tokens
+
+
 class SmolVLAQGFProcessor:
     """RTC-compatible processor that applies QGF inside SmolVLA denoising."""
 
@@ -51,6 +106,17 @@ class SmolVLAQGFProcessor:
             task_feature_source=self.task_feature_source,
             policy_model=self.policy_model,
         )
+        set_visual_tokens = getattr(self.critic, "set_visual_tokens", None)
+        if set_visual_tokens is not None:
+            if self.policy_model is None:
+                raise RuntimeError("Visual QGF critic requires the active SmolVLA policy model.")
+            # The adapter receives the policy object through install below;
+            # this attribute intentionally contains the public policy wrapper,
+            # not only its underlying model.
+            visual_policy = getattr(self, "visual_policy", None)
+            if visual_policy is None:
+                raise RuntimeError("Visual QGF critic adapter was installed without a policy wrapper.")
+            set_visual_tokens(encode_smolvla_visual_tokens(visual_policy, batch))
 
     def denoise_step(
         self,
@@ -147,6 +213,9 @@ def install_smolvla_qgf(
         task_feature_source=task_feature_source,
         policy_model=policy.model,
     )
+    processor.visual_policy = policy
+    # Kept on the policy for the shape assertion in encode_smolvla_visual_tokens.
+    policy._gaf_visual_critic = critic
 
     if not hasattr(policy, "_gaf_original_get_action_chunk"):
         policy._gaf_original_get_action_chunk = policy._get_action_chunk
