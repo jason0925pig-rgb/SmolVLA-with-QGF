@@ -73,17 +73,17 @@ class ArmstrongRos2Config(RobotConfig):
     gripper_min_state_dwell_seconds: float = 2.0
     gripper_contact_hold_seconds: float = 3.0
 
-    # Fixed return-pose completion detector.  This is the original attended
-    # manual screenshot pose (2026-08-07), expressed in radians:
-    # [-135.83, 15.80, 2.23, -117.77, 254.42, -18.03, 270.03] degrees.
+    # Fixed return-pose completion detector. This is the original attended
+    # 2026-08-07 screenshot endpoint, using its unrounded robot feedback
+    # rather than the two-decimal values shown in the screenshot.
     completion_home_joints: tuple[float, ...] = (
-        -2.370680723,
-        0.275762022,
-        0.038920842,
-        -2.055474260,
-        4.440466683,
-        -0.314682864,
-        4.712912579,
+        -2.370767,
+        0.275709,
+        0.038841,
+        -2.055510,
+        4.440476,
+        -0.314679,
+        4.712930,
     )
     completion_departure_threshold_rad: float = 0.40
     completion_return_tolerance_rad: float = 0.17453292519943295  # 10 degrees
