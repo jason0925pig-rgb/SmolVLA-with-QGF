@@ -195,10 +195,18 @@ start_stack() {
 prepare_stack() {
   echo "WARNING: this command powers/enables the right arm and opens the gripper."
   echo "It does not enter servo mode and no policy action can reach the arm."
-  call_bool /right_arm/set_powered_on true
-  wait_status 20 robot_powered_on=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
-  call_bool /right_arm/set_robot_enabled true
-  wait_status 20 robot_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
+  if wait_status 3 robot_powered_on=1 robot_enabled=1 motion_enabled=0 servo_mode_entered=0 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0 >/dev/null 2>&1; then
+    echo "Robot is already safely powered and enabled; reusing that state after ARM authorization."
+  else
+    if wait_status 3 robot_powered_on=1 robot_enabled=0 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0 >/dev/null 2>&1; then
+      echo "Robot is already powered but disabled; skipping the redundant power-on request."
+    else
+      call_bool /right_arm/set_powered_on true
+      wait_status 20 robot_powered_on=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
+    fi
+    call_bool /right_arm/set_robot_enabled true
+    wait_status 20 robot_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
+  fi
   call_bool /right_arm/set_gripper_enabled true
   call_bool /right_arm/set_gripper_open true
   echo "SMOLVLA_ROBOT_PREPARED_NO_SERVO"

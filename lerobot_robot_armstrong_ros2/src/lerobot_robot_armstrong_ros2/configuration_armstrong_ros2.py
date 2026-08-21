@@ -46,24 +46,25 @@ class ArmstrongRos2Config(RobotConfig):
         4.888320,
     )
 
-    # All 50 demonstrated first frames plus 0.10 rad.  The gripper starts open.
+    # All 50 demonstrated first frames plus 15 degrees, clamped to the task
+    # envelope above.  The gripper starts open.
     initial_lower: tuple[float, ...] = (
-        -2.821617,
-        -0.143886,
-        -0.551278,
-        -2.339504,
-        4.184058,
-        -0.728845,
-        4.018513,
+        -2.834686,
+        -0.305685,
+        -0.713077,
+        -2.381663,
+        4.118480,
+        -0.769072,
+        3.900149,
     )
     initial_upper: tuple[float, ...] = (
-        -1.715766,
-        0.590191,
-        0.371323,
-        -1.611719,
-        5.015926,
-        0.011368,
-        4.918667,
+        -1.553967,
+        0.583672,
+        0.533122,
+        -1.449920,
+        5.177725,
+        0.146565,
+        4.888320,
     )
     max_target_error_rad: float = 0.50
     small_envelope_overshoot_rad: float = 0.03

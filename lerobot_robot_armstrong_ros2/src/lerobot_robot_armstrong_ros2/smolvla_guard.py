@@ -372,7 +372,12 @@ def validate_initial_pose(
     checked = _finite_tuple(state, ACTION_DIM, "state")
     joints = checked[:JOINT_COUNT]
     outside = [
-        index + 1
+        (
+            index + 1,
+            value,
+            lower,
+            upper,
+        )
         for index, (value, lower, upper) in enumerate(
             zip(joints, config.initial_lower, config.initial_upper, strict=True)
         )
@@ -381,7 +386,10 @@ def validate_initial_pose(
     if outside:
         raise PolicySafetyError(
             "initial pose is outside the demonstrated start envelope on joints "
-            + ", ".join(map(str, outside))
+            + ", ".join(
+                f"{index} (actual={value:.6f}, allowed=[{lower:.6f}, {upper:.6f}])"
+                for index, value, lower, upper in outside
+            )
         )
     if require_open_gripper and checked[-1] >= config.gripper_close_threshold:
         raise PolicySafetyError("initial gripper state is closed; the demonstrations start open")
