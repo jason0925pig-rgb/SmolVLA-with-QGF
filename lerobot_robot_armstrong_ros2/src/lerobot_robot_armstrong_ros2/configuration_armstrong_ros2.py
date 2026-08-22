@@ -87,7 +87,7 @@ class ArmstrongRos2Config(RobotConfig):
         4.712930,
     )
     completion_departure_threshold_rad: float = 0.40
-    completion_return_tolerance_rad: float = 0.17453292519943295  # 10 degrees
+    completion_return_tolerance_rad: float = 0.2617993877991494  # 15 degrees
     # Zero disables the low-speed dwell: completion fires immediately after
     # the completed grasp/release cycle returns inside the home envelope.
     completion_stable_duration_seconds: float = 0.0

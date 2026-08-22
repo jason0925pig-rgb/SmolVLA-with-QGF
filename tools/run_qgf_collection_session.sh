@@ -11,10 +11,12 @@ TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
 ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-180}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
+COMPARISON_TAG_B64="${QGF_COMPARISON_TAG_B64:-}"
 RUN_MODE="${QGF_RUN_MODE:-baseline}"
 QGF_BETA="${QGF_BETA:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
+COMPARISON_TAG="$(printf '%s' "${COMPARISON_TAG_B64}" | base64 --decode)"
 RUNTIME_DIR="/tmp/one_arm_smolvla_${UID}"
 SERVER_PID_FILE="${RUNTIME_DIR}/policy_server.pid"
 CLIENT_PID_FILE="${RUNTIME_DIR}/policy_client.pid"
@@ -160,6 +162,14 @@ call_trigger() {
   grep -Eq 'success[=:][[:space:]]*(true|True)' <<<"${output}"
 }
 
+print_comparison_stats() {
+  local args=("${PROJECT_ROOT}/tools/summarize_qgf_comparison.py" --dataset-root "${DATASET_ROOT}")
+  if [[ -n "${COMPARISON_TAG}" ]]; then
+    args+=(--tag "${COMPARISON_TAG}")
+  fi
+  "${SMOLVLA_ORIN_VENV}/bin/python" "${args[@]}"
+}
+
 start_recorder() {
   local log="${CURRENT_STAGING}/recorder.log"
   mkdir -p "${CURRENT_STAGING}"
@@ -220,6 +230,7 @@ echo "Continuous real-robot QGF collection"
 echo "Task: ${TASK}"
 echo "Policy mode: ${RUN_MODE}"
 echo "Target kept episodes: ${TARGET_EPISODES}"
+[[ -z "${COMPARISON_TAG}" ]] || echo "Comparison cohort tag: ${COMPARISON_TAG}"
 echo "ARM and MOVE are entered only once. Power/model/cameras stay up between rounds."
 echo "Ctrl+C, physical E-stop, protective stop, controller error or unexpected gate loss"
 echo "deletes the entire current episode, including raw samples and videos."
@@ -258,6 +269,7 @@ while (( SAVED < TARGET_EPISODES )); do
   start_recorder
 
   if (( ATTEMPT == 1 )); then
+    print_comparison_stats
     read -r -p "Type MOVE once to start episode 1: " answer
     [[ "${answer}" == "MOVE" ]] || exit 0
   else
@@ -337,9 +349,10 @@ while (( SAVED < TARGET_EPISODES )); do
     esac
   done
   echo "QGF_COLLECTION_PROGRESS kept=${SAVED}/${TARGET_EPISODES} attempts=${ATTEMPT}"
+  print_comparison_stats
   (( SAVED < TARGET_EPISODES )) || break
 
-  read -r -p "Reset bottle/box now. Press Enter for the next round, or type Q to finish: " answer
+  read -r -p "Reset bottle/box now. The comparison success rates are above. Press Enter for the next round, or type Q to finish: " answer
   [[ "${answer}" != "Q" && "${answer}" != "q" ]] || break
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
   # Let any in-flight inference finish, then atomically drop all old queued
@@ -351,3 +364,4 @@ while (( SAVED < TARGET_EPISODES )); do
 done
 
 echo "QGF_COLLECTION_COMPLETE kept=${SAVED} attempts=${ATTEMPT}"
+print_comparison_stats

@@ -4,6 +4,7 @@ param(
     [string]$SshTarget = "armstrong-orin",
     [string]$DatasetRoot = "/home/nvidia/work/telop/qgf_real_rollouts",
     [string]$Notes = "",
+    [string]$ComparisonTag = "",
     [ValidateSet("baseline", "qgf")]
     [string]$Mode = "baseline",
     [double]$Beta = 0.0
@@ -29,8 +30,9 @@ $runNotes = if ($Mode -eq "qgf") {
     "$Notes; policy_mode=baseline"
 }
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($runNotes))
+$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($ComparisonTag))
 $remoteCommand = @"
-cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$DatasetRoot' QGF_RUN_MODE='$Mode' QGF_BETA='$betaText' && ./tools/run_qgf_collection_session.sh
+cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$DatasetRoot' QGF_RUN_MODE='$Mode' QGF_BETA='$betaText' && ./tools/run_qgf_collection_session.sh
 "@.Trim()
 
 Write-Host "Starting one persistent QGF collection session on $SshTarget."
@@ -38,6 +40,9 @@ Write-Host "ARM and MOVE are entered once; model, cameras, power and enable rema
 Write-Host "Ctrl+C or a robot safety stop deletes the complete current episode before shutdown."
 Write-Host "Task: $Task"
 Write-Host "Target kept episodes: $EpisodeCount"
+if (-not [string]::IsNullOrWhiteSpace($ComparisonTag)) {
+    Write-Host "Comparison cohort tag: $ComparisonTag"
+}
 if ($Mode -eq "qgf") {
     Write-Host "Policy mode: QGF; beta=$betaText; actual Q coefficient=1/beta=$((1.0 / $Beta).ToString([System.Globalization.CultureInfo]::InvariantCulture))"
 } else {
