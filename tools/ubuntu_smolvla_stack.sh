@@ -115,6 +115,14 @@ wait_status() {
   python3 "${args[@]}"
 }
 
+wait_gripper_status() {
+  local timeout_seconds="$1"
+  shift
+  local args=("${PROJECT_ROOT}/tools/wait_for_string_topic.py" /right_arm/gripper_status --timeout "${timeout_seconds}") item
+  for item in "$@"; do args+=(--contains "${item}"); done
+  python3 "${args[@]}"
+}
+
 publisher_count() {
   ros2 topic info "$1" 2>/dev/null | sed -n 's/^Publisher count: //p'
 }
@@ -209,6 +217,7 @@ prepare_stack() {
   fi
   call_bool /right_arm/set_gripper_enabled true
   call_bool /right_arm/set_gripper_open true
+  wait_gripper_status 10 enabled=1 requested_open=1
   echo "SMOLVLA_ROBOT_PREPARED_NO_SERVO"
 }
 
@@ -254,6 +263,7 @@ reset_round() {
     robot_emergency_stop=0 robot_protective_stop=0 motion_enabled=0
   call_bool /right_arm/set_gripper_enabled true
   call_bool /right_arm/set_gripper_open true
+  wait_gripper_status 10 enabled=1 requested_open=1
   echo "SMOLVLA_ROUND_RESET_POWER_AND_ENABLE_RETAINED"
 }
 

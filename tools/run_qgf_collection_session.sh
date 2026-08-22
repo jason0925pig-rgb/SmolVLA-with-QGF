@@ -479,8 +479,12 @@ while true; do
     done
     [[ -n "${NEXT_MODE}" ]] || break
 
-    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
+    # Stopping the old client publishes STOP, which intentionally disables the
+    # safe gripper.  Stop it first, then reset/re-enable the gripper.  The old
+    # order did this backwards and left every later paired round with the
+    # gripper disabled even when the model requested close.
     stop_policy_components
+    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
     start_policy_for_mode "${NEXT_MODE}"
     "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" servo
     read -r -p "${CURRENT_MODE} is ready. Reset the scene, then press Enter to start the next round (or X to finish): " answer
