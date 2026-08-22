@@ -3,13 +3,13 @@ param(
     [string]$SshTarget = "armstrong-orin",
     [string]$DatasetRoot = "/home/nvidia/work/telop/qgf_real_rollouts",
     [string]$Notes = "background_perturbation",
-    [string]$ComparisonTag = "background_perturbation",
     [ValidateRange(1, 100000)]
     [int]$BaselineEpisodeCount = 1,
     [ValidateRange(1, 100000)]
     [int]$QgfEpisodeCount = 1,
-    [ValidateSet("ask", "baseline_first", "qgf_first")]
-    [string]$Order = "ask",
+    [ValidateSet("ask", "baseline", "qgf")]
+    [string]$InitialMode = "ask",
+    [string]$PairCohort = "",
     [double]$Beta = 2.0
 )
 
@@ -17,93 +17,62 @@ $ErrorActionPreference = "Stop"
 if ($Beta -le 0.0) {
     throw "Beta must be positive. The actual Q guidance coefficient is 1/Beta."
 }
-
-$collector = Join-Path $PSScriptRoot "collect_qgf_rollouts.ps1"
-if (-not (Test-Path -LiteralPath $collector -PathType Leaf)) {
-    throw "Existing collector was not found: $collector"
+if ([string]::IsNullOrWhiteSpace($PairCohort)) {
+    $PairCohort = "background_perturbation_" + (Get-Date -Format "yyyyMMdd_HHmmss")
 }
 
-function Invoke-OneRollout {
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("baseline", "qgf")]
-        [string]$Mode,
-        [Parameter(Mandatory = $true)]
-        [int]$EpisodeCount
-    )
-
-    $arguments = @(
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", $collector,
-        "-EpisodeCount", $EpisodeCount.ToString(),
-        "-SshTarget", $SshTarget,
-        "-DatasetRoot", $DatasetRoot,
-        "-Notes", $Notes,
-        "-ComparisonTag", $ComparisonTag,
-        "-Mode", $Mode
-    )
-    if (-not [string]::IsNullOrWhiteSpace($Task)) {
-        $arguments += @("-Task", $Task)
+function Resolve-InitialMode {
+    if ($InitialMode -ne "ask") {
+        return $InitialMode
     }
-    if ($Mode -eq "qgf") {
-        $arguments += @("-Beta", $Beta.ToString([System.Globalization.CultureInfo]::InvariantCulture))
-    }
-
-    & powershell.exe @arguments
-    $collectorCode = $LASTEXITCODE
-    if ($collectorCode -ne 0) {
-        throw "$Mode collection failed with exit code $collectorCode. The next collection stage will not be started."
-    }
-}
-
-function Resolve-Order {
-    if ($Order -ne "ask") {
-        return $Order
-    }
-
     while ($true) {
-        $answer = (Read-Host "Run baseline first or QGF first? Enter B or Q").Trim().ToUpperInvariant()
+        $answer = (Read-Host "First round: Baseline or QGF? Enter B or Q").Trim().ToUpperInvariant()
         switch ($answer) {
-            "B" { return "baseline_first" }
-            "BASELINE" { return "baseline_first" }
-            "Q" { return "qgf_first" }
-            "QGF" { return "qgf_first" }
+            "B" { return "baseline" }
+            "BASELINE" { return "baseline" }
+            "Q" { return "qgf" }
+            "QGF" { return "qgf" }
             default { Write-Host "Please enter B (baseline first) or Q (QGF first)." -ForegroundColor Yellow }
         }
     }
 }
 
-$coefficient = (1.0 / $Beta).ToString([System.Globalization.CultureInfo]::InvariantCulture)
-$resolvedOrder = Resolve-Order
-Write-Host "============================================================"
-Write-Host "Paired real-robot comparison"
-Write-Host "Both rounds reuse the existing recorder, S/F/D outcome flow,"
-Write-Host "automatic completion, timeout, safety cleanup and data format."
-Write-Host "Baseline target: $BaselineEpisodeCount; QGF target: $QgfEpisodeCount"
-Write-Host "Run order: $resolvedOrder"
-Write-Host "QGF beta=$Beta; actual Q coefficient=1/beta=$coefficient"
-Write-Host "Notes: $Notes"
-Write-Host "Comparison cohort: $ComparisonTag"
-Write-Host "============================================================"
-Write-Host ""
-
-if ($resolvedOrder -eq "baseline_first") {
-    Write-Host "PAIR_STAGE_1_BASELINE"
-    Invoke-OneRollout -Mode "baseline" -EpisodeCount $BaselineEpisodeCount
-    Write-Host ""
-    Write-Host "BASELINE_COLLECTION_FINISHED"
-    Write-Host "PAIR_STAGE_2_QGF"
-    Invoke-OneRollout -Mode "qgf" -EpisodeCount $QgfEpisodeCount
-} else {
-    Write-Host "PAIR_STAGE_1_QGF"
-    Invoke-OneRollout -Mode "qgf" -EpisodeCount $QgfEpisodeCount
-    Write-Host ""
-    Write-Host "QGF_COLLECTION_FINISHED"
-    Write-Host "PAIR_STAGE_2_BASELINE"
-    Invoke-OneRollout -Mode "baseline" -EpisodeCount $BaselineEpisodeCount
+if ([string]::IsNullOrWhiteSpace($Task)) {
+    $Task = [System.Text.Encoding]::UTF8.GetString(
+        [Convert]::FromBase64String("5oqK55+/5rOJ5rC05pS+6L+b57q4566x6YeM44CC")
+    )
 }
 
+$resolvedInitialMode = Resolve-InitialMode
+$remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
+$notesForRun = "$Notes; paired_cohort=$PairCohort"
+$comparisonTag = "paired_cohort=$PairCohort"
+$taskBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Task))
+$notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($notesForRun))
+$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
+$betaText = $Beta.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+$coefficient = (1.0 / $Beta).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+$remoteCommand = @"
+cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_DATASET_ROOT='$DatasetRoot' QGF_BETA='$betaText' && ./tools/run_qgf_collection_session.sh
+"@.Trim()
+
+Write-Host "============================================================"
+Write-Host "Interactive paired Baseline/QGF real-robot collection"
+Write-Host "Baseline target: $BaselineEpisodeCount; QGF target: $QgfEpisodeCount"
+Write-Host "First policy: $resolvedInitialMode"
+Write-Host "QGF beta=$Beta; actual Q coefficient=1/beta=$coefficient"
+Write-Host "Notes: $Notes"
+Write-Host "Independent comparison cohort: $PairCohort"
+Write-Host "After each F/S/D label, the remote terminal prints both success rates."
+Write-Host "Then choose B=baseline, Q/G=QGF, or X=finish; after B/Q/G press Enter to start."
+Write-Host "ARM and MOVE are entered once. Power/enable stay on between rounds."
+Write-Host "============================================================"
 Write-Host ""
-Write-Host "PAIRED_BASELINE_QGF_COLLECTION_FINISHED"
+
+& ssh -tt $SshTarget $remoteCommand
+$sshCode = $LASTEXITCODE
+if ($sshCode -eq 0 -or $sshCode -eq 130) {
+    Write-Host "Paired collection session ended; ordered robot shutdown was requested."
+    exit 0
+}
+throw "Paired collection session failed with SSH exit code $sshCode. The current episode should have been deleted by remote cleanup."

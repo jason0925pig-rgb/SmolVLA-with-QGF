@@ -13,7 +13,10 @@ TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 COMPARISON_TAG_B64="${QGF_COMPARISON_TAG_B64:-}"
 RUN_MODE="${QGF_RUN_MODE:-baseline}"
+INITIAL_MODE="${QGF_INITIAL_MODE:-${RUN_MODE}}"
 QGF_BETA="${QGF_BETA:-0}"
+BASELINE_TARGET="${QGF_BASELINE_EPISODE_COUNT:-0}"
+QGF_TARGET="${QGF_QGF_EPISODE_COUNT:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
 COMPARISON_TAG="$(printf '%s' "${COMPARISON_TAG_B64}" | base64 --decode)"
@@ -27,7 +30,11 @@ MONITOR_PID=""
 CURRENT_STAGING=""
 STOPPING=0
 SAVED=0
+SAVED_BASELINE=0
+SAVED_QGF=0
 ATTEMPT=0
+PAIRED_MODE=0
+CURRENT_MODE="${RUN_MODE}"
 
 mkdir -p "${RUNTIME_DIR}" "${DATASET_ROOT}/.staging"
 
@@ -140,6 +147,24 @@ raise SystemExit("policy server did not become ready")
 PY
 }
 
+# When changing from baseline to QGF (or back), do not let a just-stopped
+# process keep the TCP port alive.  Otherwise the readiness probe could attach
+# to the old server and silently retain the previous policy mode.
+wait_for_server_stopped() {
+  "${SMOLVLA_ORIN_VENV}/bin/python" - "${SMOLVLA_SERVER_HOST}" "${SMOLVLA_SERVER_PORT}" <<'PY'
+import socket, sys, time
+host, port = sys.argv[1], int(sys.argv[2])
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            time.sleep(0.2)
+    except OSError:
+        raise SystemExit(0)
+raise SystemExit("previous policy server did not release its TCP port")
+PY
+}
+
 wait_observation_and_chunk() {
   python3 "${PROJECT_ROOT}/tools/wait_for_string_topic.py" /smolvla/status \
     --timeout 180 --contains connected=1 --contains action_enabled=0 \
@@ -185,10 +210,13 @@ start_recorder() {
 }
 
 finalize_current() {
-  local outcome="$1" termination_source="$2"
+  local outcome="$1" termination_source="$2" notes="${NOTES}"
+  if (( PAIRED_MODE )); then
+    notes="${NOTES}; policy_mode=${CURRENT_MODE}"
+  fi
   "${SMOLVLA_ORIN_VENV}/bin/python" "${PROJECT_ROOT}/tools/finalize_qgf_episode.py" \
     --staging "${CURRENT_STAGING}" --dataset-root "${DATASET_ROOT}" \
-    --outcome "${outcome}" --task "${TASK}" --notes "${NOTES}" \
+    --outcome "${outcome}" --task "${TASK}" --notes "${notes}" \
     --termination-source "${termination_source}"
   CURRENT_STAGING=""
 }
@@ -197,14 +225,19 @@ if alive_pid_file "${SERVER_PID_FILE}" || alive_pid_file "${CLIENT_PID_FILE}"; t
   echo "ERROR: another SmolVLA launcher is already running." >&2
   exit 3
 fi
-[[ "${TARGET_EPISODES}" =~ ^[1-9][0-9]*$ ]] || {
-  echo "ERROR: QGF_EPISODE_COUNT must be a positive integer." >&2; exit 2;
+
+is_positive_integer() {
+  [[ "$1" =~ ^[1-9][0-9]*$ ]]
 }
-case "${RUN_MODE}" in
-  baseline)
-    export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_telemetry"
-    ;;
-  qgf)
+
+configure_policy_mode() {
+  local mode="$1"
+  case "${mode}" in
+    baseline)
+      export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_telemetry"
+      unset SMOLVLA_QGF_BETA
+      ;;
+    qgf)
     python3 - "${QGF_BETA}" <<'PY'
 import math
 import sys
@@ -213,23 +246,83 @@ if not math.isfinite(beta) or beta <= 0.0:
     raise SystemExit("ERROR: QGF_BETA must be a finite positive value in qgf mode.")
 print(f"QGF_CONFIG beta={beta:.8g} coefficient=1/beta={1.0 / beta:.8g}")
 PY
-    export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_qgf"
-    export SMOLVLA_QGF_BETA="${QGF_BETA}"
-    export SMOLVLA_QGF_GRAD_CLIP_NORM="${SMOLVLA_QGF_GRAD_CLIP_NORM:-1.0}"
-    [[ -f "${SMOLVLA_QGF_CRITIC_PATH}" ]] || {
-      echo "ERROR: QGF critic checkpoint is missing: ${SMOLVLA_QGF_CRITIC_PATH}" >&2; exit 2;
+      export SMOLVLA_POLICY_SERVER_MODULE="lerobot_robot_armstrong_ros2.policy_server_qgf"
+      export SMOLVLA_QGF_BETA="${QGF_BETA}"
+      export SMOLVLA_QGF_GRAD_CLIP_NORM="${SMOLVLA_QGF_GRAD_CLIP_NORM:-1.0}"
+      [[ -f "${SMOLVLA_QGF_CRITIC_PATH}" ]] || {
+        echo "ERROR: QGF critic checkpoint is missing: ${SMOLVLA_QGF_CRITIC_PATH}" >&2; return 1;
+      }
+      ;;
+    *)
+      echo "ERROR: policy mode must be baseline or qgf, got ${mode}." >&2; return 1;
+      ;;
+  esac
+}
+
+start_policy_server() {
+  : >"${SERVER_LOG}"
+  start_managed "${SERVER_PID_FILE}" "${SERVER_LOG}" \
+    "${PROJECT_ROOT}/tools/start_smolvla_orin_policy_server.sh"
+  wait_for_server
+}
+
+start_policy_client() {
+  : >"${CLIENT_LOG}"
+  start_managed "${CLIENT_PID_FILE}" "${CLIENT_LOG}" \
+    "${PROJECT_ROOT}/tools/start_smolvla_orin_ros_client.sh"
+  sleep 2
+  alive_pid_file "${CLIENT_PID_FILE}" || {
+    tail -n 100 "${CLIENT_LOG}" >&2 || true; return 1;
+  }
+  wait_observation_and_chunk
+}
+
+stop_policy_components() {
+  stop_managed "${CLIENT_PID_FILE}"
+  stop_managed "${SERVER_PID_FILE}"
+  wait_for_server_stopped
+}
+
+start_policy_for_mode() {
+  CURRENT_MODE="$1"
+  configure_policy_mode "${CURRENT_MODE}"
+  start_policy_server
+  start_policy_client
+}
+
+case "${RUN_MODE}" in
+  baseline|qgf)
+    is_positive_integer "${TARGET_EPISODES}" || {
+      echo "ERROR: QGF_EPISODE_COUNT must be a positive integer." >&2; exit 2;
     }
+    CURRENT_MODE="${RUN_MODE}"
+    ;;
+  paired)
+    PAIRED_MODE=1
+    is_positive_integer "${BASELINE_TARGET}" || {
+      echo "ERROR: QGF_BASELINE_EPISODE_COUNT must be a positive integer in paired mode." >&2; exit 2;
+    }
+    is_positive_integer "${QGF_TARGET}" || {
+      echo "ERROR: QGF_QGF_EPISODE_COUNT must be a positive integer in paired mode." >&2; exit 2;
+    }
+    case "${INITIAL_MODE}" in baseline|qgf) CURRENT_MODE="${INITIAL_MODE}" ;; *)
+      echo "ERROR: QGF_INITIAL_MODE must be baseline or qgf in paired mode." >&2; exit 2;; esac
     ;;
   *)
-    echo "ERROR: QGF_RUN_MODE must be baseline or qgf, got ${RUN_MODE}." >&2; exit 2;
+    echo "ERROR: QGF_RUN_MODE must be baseline, qgf or paired, got ${RUN_MODE}." >&2; exit 2;
     ;;
 esac
+configure_policy_mode "${CURRENT_MODE}"
 
 echo "============================================================"
 echo "Continuous real-robot QGF collection"
 echo "Task: ${TASK}"
-echo "Policy mode: ${RUN_MODE}"
-echo "Target kept episodes: ${TARGET_EPISODES}"
+if (( PAIRED_MODE )); then
+  echo "Interactive paired mode: initial=${CURRENT_MODE}; baseline_target=${BASELINE_TARGET}; qgf_target=${QGF_TARGET}"
+else
+  echo "Policy mode: ${RUN_MODE}"
+  echo "Target kept episodes: ${TARGET_EPISODES}"
+fi
 [[ -z "${COMPARISON_TAG}" ]] || echo "Comparison cohort tag: ${COMPARISON_TAG}"
 echo "ARM and MOVE are entered only once. Power/model/cameras stay up between rounds."
 echo "Ctrl+C, physical E-stop, protective stop, controller error or unexpected gate loss"
@@ -241,29 +334,22 @@ echo "============================================================"
   --checkpoint "${SMOLVLA_SERVER_MODEL_PATH}" \
   --dataset-root "${DATASET_ROOT}"
 
-: >"${SERVER_LOG}"
-: >"${CLIENT_LOG}"
-# The server module was selected above from QGF_RUN_MODE.  Do not overwrite it
-# here: doing so would silently turn a requested QGF rollout into baseline.
-start_managed "${SERVER_PID_FILE}" "${SERVER_LOG}" \
-  "${PROJECT_ROOT}/tools/start_smolvla_orin_policy_server.sh"
-wait_for_server
+start_policy_server
 "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" start
 
 read -r -p "Type ARM once to power and enable the right arm: " answer
 [[ "${answer}" == "ARM" ]] || exit 0
 "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" prepare
 
-start_managed "${CLIENT_PID_FILE}" "${CLIENT_LOG}" \
-  "${PROJECT_ROOT}/tools/start_smolvla_orin_ros_client.sh"
-sleep 2
-alive_pid_file "${CLIENT_PID_FILE}" || {
-  tail -n 100 "${CLIENT_LOG}" >&2 || true; exit 1;
-}
-wait_observation_and_chunk
+start_policy_client
 "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" servo
 
-while (( SAVED < TARGET_EPISODES )); do
+while true; do
+  if (( PAIRED_MODE )); then
+    (( SAVED_BASELINE < BASELINE_TARGET || SAVED_QGF < QGF_TARGET )) || break
+  else
+    (( SAVED < TARGET_EPISODES )) || break
+  fi
   ATTEMPT=$((ATTEMPT + 1))
   CURRENT_STAGING="${DATASET_ROOT}/.staging/$(date +%Y%m%d_%H%M%S)_attempt_$(printf '%04d' "${ATTEMPT}")"
   start_recorder
@@ -273,7 +359,11 @@ while (( SAVED < TARGET_EPISODES )); do
     read -r -p "Type MOVE once to start episode 1: " answer
     [[ "${answer}" == "MOVE" ]] || exit 0
   else
-    echo "NEXT_EPISODE_READY episode=$((SAVED + 1)); starting after the confirmed scene reset."
+    if (( PAIRED_MODE )); then
+      echo "NEXT_PAIRED_EPISODE_READY mode=${CURRENT_MODE}; starting after the confirmed scene reset."
+    else
+      echo "NEXT_EPISODE_READY episode=$((SAVED + 1)); starting after the confirmed scene reset."
+    fi
   fi
 
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" enable-policy
@@ -342,26 +432,77 @@ while (( SAVED < TARGET_EPISODES )); do
   while true; do
     read -r -p "Label: S=save success, F=save failure, D=discard/delete: " answer
     case "${answer}" in
-      S|s) finalize_current success "${termination_source}"; SAVED=$((SAVED + 1)); break ;;
-      F|f) finalize_current failure "${termination_source}"; SAVED=$((SAVED + 1)); break ;;
+      S|s)
+        finalize_current success "${termination_source}"
+        if (( PAIRED_MODE )); then
+          if [[ "${CURRENT_MODE}" == "baseline" ]]; then SAVED_BASELINE=$((SAVED_BASELINE + 1)); else SAVED_QGF=$((SAVED_QGF + 1)); fi
+        else
+          SAVED=$((SAVED + 1))
+        fi
+        break
+        ;;
+      F|f)
+        finalize_current failure "${termination_source}"
+        if (( PAIRED_MODE )); then
+          if [[ "${CURRENT_MODE}" == "baseline" ]]; then SAVED_BASELINE=$((SAVED_BASELINE + 1)); else SAVED_QGF=$((SAVED_QGF + 1)); fi
+        else
+          SAVED=$((SAVED + 1))
+        fi
+        break
+        ;;
       D|d) finalize_current discard "${termination_source}"; break ;;
       *) echo "Please enter S, F or D." ;;
     esac
   done
-  echo "QGF_COLLECTION_PROGRESS kept=${SAVED}/${TARGET_EPISODES} attempts=${ATTEMPT}"
   print_comparison_stats
-  (( SAVED < TARGET_EPISODES )) || break
+  if (( PAIRED_MODE )); then
+    echo "QGF_PAIRED_PROGRESS baseline=${SAVED_BASELINE}/${BASELINE_TARGET} qgf=${SAVED_QGF}/${QGF_TARGET} attempts=${ATTEMPT}"
+    (( SAVED_BASELINE < BASELINE_TARGET || SAVED_QGF < QGF_TARGET )) || break
 
-  read -r -p "Reset bottle/box now. The comparison success rates are above. Press Enter for the next round, or type Q to finish: " answer
-  [[ "${answer}" != "Q" && "${answer}" != "q" ]] || break
-  "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
-  # Let any in-flight inference finish, then atomically drop all old queued
-  # actions. The client/model processes themselves remain alive.
-  sleep 3
-  call_trigger /smolvla/reset_episode
-  wait_observation_and_chunk
-  "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" servo
+    while true; do
+      read -r -p "Next policy: B=baseline, Q/G=QGF, X=finish session: " answer
+      case "${answer}" in
+        B|b|baseline|BASELINE)
+          NEXT_MODE="baseline"
+          if (( SAVED_BASELINE >= BASELINE_TARGET )); then echo "Baseline target is already complete."; else break; fi
+          ;;
+        G|g|Q|q|qgf|QGF)
+          NEXT_MODE="qgf"
+          if (( SAVED_QGF >= QGF_TARGET )); then echo "QGF target is already complete."; else break; fi
+          ;;
+        X|x)
+          NEXT_MODE=""
+          break
+          ;;
+        *) echo "Please enter B, Q/G or X." ;;
+      esac
+    done
+    [[ -n "${NEXT_MODE}" ]] || break
+
+    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
+    stop_policy_components
+    start_policy_for_mode "${NEXT_MODE}"
+    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" servo
+    read -r -p "${CURRENT_MODE} is ready. Reset the scene, then press Enter to start the next round (or X to finish): " answer
+    [[ "${answer}" != "X" && "${answer}" != "x" ]] || break
+  else
+    echo "QGF_COLLECTION_PROGRESS kept=${SAVED}/${TARGET_EPISODES} attempts=${ATTEMPT}"
+    (( SAVED < TARGET_EPISODES )) || break
+    read -r -p "Reset bottle/box now. The comparison success rates are above. Press Enter for the next round, or type Q to finish: " answer
+    [[ "${answer}" != "Q" && "${answer}" != "q" ]] || break
+    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" reset-round
+    # Let any in-flight inference finish, then atomically drop all old queued
+    # actions. The client/model processes themselves remain alive.
+    sleep 3
+    call_trigger /smolvla/reset_episode
+    wait_observation_and_chunk
+    "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" servo
+  fi
 done
 
-echo "QGF_COLLECTION_COMPLETE kept=${SAVED} attempts=${ATTEMPT}"
+if (( PAIRED_MODE )); then
+  echo "QGF_PAIRED_COLLECTION_COMPLETE baseline=${SAVED_BASELINE}/${BASELINE_TARGET} qgf=${SAVED_QGF}/${QGF_TARGET} attempts=${ATTEMPT}"
+else
+  echo "QGF_COLLECTION_COMPLETE kept=${SAVED} attempts=${ATTEMPT}"
+fi
 print_comparison_stats
