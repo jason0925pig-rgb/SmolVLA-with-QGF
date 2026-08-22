@@ -9,6 +9,9 @@ param(
     [int]$QgfEpisodeCount = 1,
     [ValidateSet("ask", "baseline", "qgf")]
     [string]$InitialMode = "ask",
+    # Leave empty to include every episode tagged with $Notes, including the
+    # five earlier background_perturbation rollouts.  Set this only when a
+    # later experiment needs an isolated subset.
     [string]$PairCohort = "",
     [double]$Beta = 2.0
 )
@@ -17,10 +20,6 @@ $ErrorActionPreference = "Stop"
 if ($Beta -le 0.0) {
     throw "Beta must be positive. The actual Q guidance coefficient is 1/Beta."
 }
-if ([string]::IsNullOrWhiteSpace($PairCohort)) {
-    $PairCohort = "background_perturbation_" + (Get-Date -Format "yyyyMMdd_HHmmss")
-}
-
 function Resolve-InitialMode {
     if ($InitialMode -ne "ask") {
         return $InitialMode
@@ -45,8 +44,17 @@ if ([string]::IsNullOrWhiteSpace($Task)) {
 
 $resolvedInitialMode = Resolve-InitialMode
 $remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
-$notesForRun = "$Notes; paired_cohort=$PairCohort"
-$comparisonTag = "paired_cohort=$PairCohort"
+if ([string]::IsNullOrWhiteSpace($PairCohort)) {
+    # Historical runs predate paired_cohort.  Match on the shared experiment
+    # note so they are included in the live success-rate table.
+    $notesForRun = $Notes
+    $comparisonTag = $Notes
+    $cohortDescription = "all episodes tagged '$Notes' (including earlier saved rounds)"
+} else {
+    $notesForRun = "$Notes; paired_cohort=$PairCohort"
+    $comparisonTag = "paired_cohort=$PairCohort"
+    $cohortDescription = "isolated cohort '$PairCohort'"
+}
 $taskBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Task))
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($notesForRun))
 $comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
@@ -62,7 +70,7 @@ Write-Host "Baseline target: $BaselineEpisodeCount; QGF target: $QgfEpisodeCount
 Write-Host "First policy: $resolvedInitialMode"
 Write-Host "QGF beta=$Beta; actual Q coefficient=1/beta=$coefficient"
 Write-Host "Notes: $Notes"
-Write-Host "Independent comparison cohort: $PairCohort"
+Write-Host "Statistics scope: $cohortDescription"
 Write-Host "After each F/S/D label, the remote terminal prints both success rates."
 Write-Host "Then choose B=baseline, Q/G=QGF, or X=finish; after B/Q/G press Enter to start."
 Write-Host "ARM and MOVE are entered once. Power/enable stay on between rounds."
