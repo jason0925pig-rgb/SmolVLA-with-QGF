@@ -221,6 +221,51 @@ finalize_current() {
   CURRENT_STAGING=""
 }
 
+record_abnormal_episode_then_stop() {
+  local termination_source="$1" monitor_code="$2" answer
+
+  # The monitor has already observed a safety condition.  Stop policy/servo
+  # immediately; never leave the robot moving while waiting for keyboard
+  # input.  Keep the recorder staging directory intact until the operator
+  # explicitly decides whether the evidence should be kept or discarded.
+  "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" disable-policy || true
+  stop_recorder
+  echo ""
+  echo "SAFETY_STOP_REVIEW source=${termination_source} code=${monitor_code}"
+  echo "Motion is stopped. Robot shutdown will follow after you label this episode."
+  echo "The final metadata will retain termination_source=${termination_source}."
+
+  while true; do
+    read -r -p "Abnormal stop: S=save success, F=save failure, D=discard/delete: " answer
+    case "${answer}" in
+      S|s)
+        finalize_current success "${termination_source}"
+        if (( PAIRED_MODE )); then
+          if [[ "${CURRENT_MODE}" == "baseline" ]]; then SAVED_BASELINE=$((SAVED_BASELINE + 1)); else SAVED_QGF=$((SAVED_QGF + 1)); fi
+        else
+          SAVED=$((SAVED + 1))
+        fi
+        break
+        ;;
+      F|f)
+        finalize_current failure "${termination_source}"
+        if (( PAIRED_MODE )); then
+          if [[ "${CURRENT_MODE}" == "baseline" ]]; then SAVED_BASELINE=$((SAVED_BASELINE + 1)); else SAVED_QGF=$((SAVED_QGF + 1)); fi
+        else
+          SAVED=$((SAVED + 1))
+        fi
+        break
+        ;;
+      D|d)
+        finalize_current discard "${termination_source}"
+        break
+        ;;
+      *) echo "Please enter S, F or D." ;;
+    esac
+  done
+  print_comparison_stats
+}
+
 if alive_pid_file "${SERVER_PID_FILE}" || alive_pid_file "${CLIENT_PID_FILE}"; then
   echo "ERROR: another SmolVLA launcher is already running." >&2
   exit 3
@@ -325,8 +370,8 @@ else
 fi
 [[ -z "${COMPARISON_TAG}" ]] || echo "Comparison cohort tag: ${COMPARISON_TAG}"
 echo "ARM and MOVE are entered only once. Power/model/cameras stay up between rounds."
-echo "Ctrl+C, physical E-stop, protective stop, controller error or unexpected gate loss"
-echo "deletes the entire current episode, including raw samples and videos."
+echo "Ctrl+C/ABORT deletes the current episode immediately. Physical safety stops"
+echo "and policy safety guards stop motion first, then ask whether to save S/F or delete D."
 echo "============================================================"
 
 "${SMOLVLA_ORIN_VENV}/bin/python" "${PROJECT_ROOT}/tools/snapshot_qgf_provenance.py" \
@@ -422,7 +467,8 @@ while true; do
 
   if (( monitor_code != 0 )); then
     echo "ERROR: unsafe/abnormal rollout stop: ${termination_source} (code ${monitor_code})." >&2
-    echo "The current episode will be deleted and the full stack powered off." >&2
+    record_abnormal_episode_then_stop "${termination_source}" "${monitor_code}"
+    echo "Abnormal episode review completed; the full stack will now be powered off." >&2
     exit "${monitor_code}"
   fi
 

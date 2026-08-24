@@ -78,6 +78,7 @@ Write-Host "Statistics scope: $cohortDescription"
 Write-Host "After each F/S/D label, the remote terminal prints both success rates."
 Write-Host "Then choose B=baseline, Q/G=QGF, or X=finish; after B/Q/G press Enter to start."
 Write-Host "ARM and MOVE are entered once. Power/enable stay on between rounds."
+Write-Host "Ctrl+C/ABORT discards immediately. A safety stop first freezes motion, then asks S/F/D before shutdown."
 Write-Host "============================================================"
 Write-Host ""
 
