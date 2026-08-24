@@ -108,12 +108,15 @@ def existing_indices(episodes_dir: Path) -> set[int]:
     return result
 
 
-def next_contiguous_index(episodes_dir: Path) -> int:
+def next_monotonic_index(episodes_dir: Path) -> int:
+    """Allocate strictly after the largest existing episode index.
+
+    Episode directories may be deliberately discarded after collection.  Do
+    not reuse those numeric gaps: the directory index is also used as a
+    human-facing chronological identifier in experiment logs and figures.
+    """
     used = existing_indices(episodes_dir)
-    index = 0
-    while index in used:
-        index += 1
-    return index
+    return max(used, default=-1) + 1
 
 
 def write_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -208,7 +211,7 @@ def finalize(
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as lock:
         with exclusive_file_lock(lock):
-            index = next_contiguous_index(episodes_dir)
+            index = next_monotonic_index(episodes_dir)
             episode_name = f"episode_{index:06d}"
             destination = episodes_dir / episode_name
             metadata = {
