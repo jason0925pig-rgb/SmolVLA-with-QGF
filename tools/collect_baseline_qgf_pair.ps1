@@ -2,7 +2,11 @@ param(
     [string]$Task = "",
     [string]$SshTarget = "armstrong-orin",
     [string]$DatasetRoot = "/home/nvidia/work/telop/qgf_real_rollouts",
-    [string]$Notes = "background_perturbation",
+    # Keep this aligned with the currently active real-robot perturbation
+    # cohort.  Existing episodes 221+ use this plain note tag (without a
+    # separate paired_cohort field), so the default live statistics include
+    # both those earlier saved rounds and the new paired rounds.
+    [string]$Notes = "distractor_perturbation",
     [ValidateRange(1, 100000)]
     [int]$BaselineEpisodeCount = 1,
     [ValidateRange(1, 100000)]
@@ -10,7 +14,7 @@ param(
     [ValidateSet("ask", "baseline", "qgf")]
     [string]$InitialMode = "ask",
     # Leave empty to include every episode tagged with $Notes, including the
-    # five earlier background_perturbation rollouts.  Set this only when a
+    # earlier rounds tagged with the same perturbation. Set this only when a
     # later experiment needs an isolated subset.
     [string]$PairCohort = "",
     [double]$Beta = 2.0
