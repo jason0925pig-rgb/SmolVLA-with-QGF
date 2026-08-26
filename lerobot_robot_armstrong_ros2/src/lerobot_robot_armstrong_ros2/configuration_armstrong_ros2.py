@@ -74,9 +74,9 @@ class ArmstrongRos2Config(RobotConfig):
     # J1/J3/J5/J7 may be reported modulo 2π by the controller.  The adapter
     # canonicalizes only these axes before model/safety-envelope comparisons.
     wraparound_joint_indices: tuple[int, ...] = (0, 2, 4, 6)
-    gripper_open_threshold: float = 0.15
+    gripper_open_threshold: float = 0.40
     gripper_close_threshold: float = 0.85
-    gripper_confirmation_frames: int = 10
+    gripper_confirmation_frames: int = 5
     gripper_min_state_dwell_seconds: float = 2.0
     gripper_contact_hold_seconds: float = 3.0
 
