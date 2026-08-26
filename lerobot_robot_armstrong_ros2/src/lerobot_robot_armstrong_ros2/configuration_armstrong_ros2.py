@@ -67,7 +67,10 @@ class ArmstrongRos2Config(RobotConfig):
         4.888320,
     )
     max_target_error_rad: float = 0.50
-    small_envelope_overshoot_rad: float = 0.03
+    # Learned policies naturally interpolate slightly beyond the extrema of a
+    # finite demonstration set.  This is an envelope soft margin only; the
+    # physical joint limits and max_target_error_rad remain independent.
+    small_envelope_overshoot_rad: float = 0.17453292519943295  # 10 degrees
     # J1/J3/J5/J7 may be reported modulo 2π by the controller.  The adapter
     # canonicalizes only these axes before model/safety-envelope comparisons.
     wraparound_joint_indices: tuple[int, ...] = (0, 2, 4, 6)
