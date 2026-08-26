@@ -1,6 +1,8 @@
 ﻿param(
     [int]$EpisodeCount = 5,
     [string]$SshTarget = "armstrong-orin",
+    # Keep parcel rollouts out of the historical water/QGF dataset root.
+    [string]$DatasetRoot = "/home/nvidia/work/telop/parcel_real_rollouts",
     [string]$Notes = "parcel_task; new_ckpt=015000",
     [ValidateSet("baseline", "qgf")]
     [string]$Mode = "baseline",
@@ -35,6 +37,7 @@ $forward = @{
     Task = $task
     EpisodeCount = $EpisodeCount
     SshTarget = $SshTarget
+    DatasetRoot = $DatasetRoot
     Notes = $Notes
     Mode = $Mode
     ModelBundle = $bundle

@@ -17,7 +17,9 @@ export SMOLVLA_SERVER_PORT="${SMOLVLA_SERVER_PORT:-8080}"
 export SMOLVLA_SERVER_ADDRESS="127.0.0.1:${SMOLVLA_SERVER_PORT}"
 export SMOLVLA_VENV="${SMOLVLA_ORIN_VENV}"
 export SMOLVLA_CLIENT_VENV="${SMOLVLA_ORIN_VENV}"
-export SMOLVLA_SERVER_MODEL_PATH="${SMOLVLA_ORIN_BUNDLE}/checkpoint"
+# Preserve an explicitly selected alternate checkpoint. With no override this
+# remains the original default checkpoint path for every existing rollout.
+export SMOLVLA_SERVER_MODEL_PATH="${SMOLVLA_SERVER_MODEL_PATH:-${SMOLVLA_ORIN_BUNDLE}/checkpoint}"
 # One visual Q critic trained from real episodes 17–116.  It is required only
 # when collect_qgf_rollouts.ps1 is invoked with -Mode qgf.
 export SMOLVLA_QGF_CRITIC_PATH="${SMOLVLA_QGF_CRITIC_PATH:-${SMOLVLA_ORIN_ROOT}/models/qgf/real_17_116_single_qcritic/critic_member_00.pt}"
