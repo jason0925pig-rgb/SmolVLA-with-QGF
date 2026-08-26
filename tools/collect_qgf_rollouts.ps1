@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Task = "",
     [int]$EpisodeCount = 50,
     [string]$SshTarget = "armstrong-orin",
@@ -7,7 +7,12 @@ param(
     [string]$ComparisonTag = "",
     [ValidateSet("baseline", "qgf")]
     [string]$Mode = "baseline",
-    [double]$Beta = 0.0
+    [double]$Beta = 0.0,
+    # Optional model overrides for non-default tasks. Empty keeps the Orin
+    # profile defaults (the original water-bottle bundle), so existing
+    # invocations are byte-for-byte unchanged.
+    [string]$ModelBundle = "",
+    [string]$ModelCheckpointPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,8 +36,15 @@ $runNotes = if ($Mode -eq "qgf") {
 }
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($runNotes))
 $comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($ComparisonTag))
+$modelExports = ""
+if (-not [string]::IsNullOrWhiteSpace($ModelBundle)) {
+    $modelExports += "export SMOLVLA_ORIN_BUNDLE='$ModelBundle' && "
+}
+if (-not [string]::IsNullOrWhiteSpace($ModelCheckpointPath)) {
+    $modelExports += "export SMOLVLA_SERVER_MODEL_PATH='$ModelCheckpointPath' && "
+}
 $remoteCommand = @"
-cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$DatasetRoot' QGF_RUN_MODE='$Mode' QGF_BETA='$betaText' && ./tools/run_qgf_collection_session.sh
+cd '$remoteProject' && $modelExports export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$DatasetRoot' QGF_RUN_MODE='$Mode' QGF_BETA='$betaText' && ./tools/run_qgf_collection_session.sh
 "@.Trim()
 
 Write-Host "Starting one persistent QGF collection session on $SshTarget."
