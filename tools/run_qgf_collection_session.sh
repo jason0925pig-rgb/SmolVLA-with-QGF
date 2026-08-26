@@ -8,7 +8,10 @@ source "${PROJECT_ROOT}/tools/smolvla_orin_env.sh"
 DATASET_ROOT="${QGF_DATASET_ROOT:-/home/nvidia/work/telop/qgf_real_rollouts}"
 TARGET_EPISODES="${QGF_EPISODE_COUNT:-20}"
 # Each attended round ends after this duration; power and enable remain on for S/F.
-ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-180}"
+# Attended rollouts may take time to recover or complete a multi-stage task.
+# Keep an explicit override, but do not stop an otherwise healthy policy after
+# the historical three-minute default.
+ROLLOUT_TIMEOUT_SECONDS="${QGF_ROLLOUT_TIMEOUT_SECONDS:-3600}"
 TASK_B64="${SMOLVLA_TASK_B64:?SMOLVLA_TASK_B64 is required}"
 NOTES_B64="${QGF_NOTES_B64:-}"
 COMPARISON_TAG_B64="${QGF_COMPARISON_TAG_B64:-}"
