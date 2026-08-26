@@ -1,0 +1,67 @@
+{
+  "run_id": "20260825_parcel_50",
+  "task_text": "把箱子里面的红色包裹放到箱子外面左侧，绿色包裹放到箱子外面右侧",
+  "base_model": {
+    "repo": "lerobot/smolvla_base",
+    "revision": "c83c3163b8ca9b7e67c509fffd9121e66cb96205",
+    "source": "hf-mirror.com",
+    "note": "init dir = base weights + config input/output features rewritten to chest/wrist_right/state8/action8 (same method as old smolvla_onearm_20k_20260805 whose train_config shows pretrained_path=smolvla_onearm_init)"
+  },
+  "init_dir": "/home/zwwl_user2/parcel_smolvla/models/smolvla_parcel_init",
+  "environment": {
+    "python": "3.10.12",
+    "lerobot": "0.4.4",
+    "torch": "2.10.0+cu128",
+    "host": "g0084(A800)",
+    "gpu": "physical GPU 7 only (CUDA_VISIBLE_DEVICES=7)"
+  },
+  "dataset": {
+    "root": "/home/zwwl_user2/parcel_smolvla/20260825_parcel_50/dataset",
+    "repo_id": "local/onearm_parcel_50",
+    "episodes": 50,
+    "frames": 99573,
+    "source_episodes": "orig ep50-99 of onearm_Tele lerobot_dataset",
+    "stats": "aggregated ONLY from these 50 episodes per-episode stats via lerobot aggregate_stats",
+    "transfer_check": "404 files / 5905315566 bytes identical Orin vs A800"
+  },
+  "training": {
+    "steps": 20000,
+    "batch_size": 64,
+    "seed": 1000,
+    "save_freq": 5000,
+    "num_workers": 8,
+    "push_to_hub": false,
+    "note": "config copied from previous successful run (train_config.json of old bundle); PIPELINE.log TRAIN_START line says seed=42 by echo mistake - actual --seed=1000, authoritative source is output train_config.json"
+  },
+  "validation_plan": "offline: validate_smolvla_checkpoint.py on 4 checkpoints, select best; no episode held out from training (consistent with old recipe; noted as limitation)",
+  "result": {
+    "train_done": "2026-08-26 00:15:35",
+    "wall_hours": 4.9,
+    "validation": {
+      "005000": {
+        "loss": 0.01934
+      },
+      "010000": {
+        "loss": 0.01004
+      },
+      "015000": {
+        "loss": 0.00887,
+        "mae_rad": 0.01885,
+        "gripper_acc": 0.983125
+      },
+      "020000": {
+        "loss": 0.00824,
+        "mae_rad": 0.0178,
+        "gripper_acc": 0.9825
+      }
+    },
+    "selected_best": "015000 (official select tool rule: gripper acc first; margin over 020000 = 1/1600 samples)",
+    "deployed": {
+      "orin_primary": "models/smolvla_20260825_parcel_50/checkpoint = step 015000 (sha bundle d3372f78...)",
+      "orin_alt": "checkpoint_alt_020000 (sha 7db56d1f...)",
+      "note": "deployed-on-orin copy has tokenizer_name and vlm_model_name rewritten to /home/nvidia/work/telop/models/smolvla_20260825_parcel_50/vlm (offline); A800 originals left as-is"
+    },
+    "orin_smoke": "SMOLVLA_POLICY_SERVER_SMOKE_OK requests=3 actions=(50,8) warm_latency_s=0.86 offline=1 sample=parcel frame 70000",
+    "hardware_note": "e-stop pressed entire night; zero power/enable/servo commands issued"
+  }
+}
