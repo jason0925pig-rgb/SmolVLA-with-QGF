@@ -127,6 +127,29 @@ publisher_count() {
   ros2 topic info "$1" 2>/dev/null | sed -n 's/^Publisher count: //p'
 }
 
+wait_for_exactly_one_publisher() {
+  local topic="$1"
+  local timeout_seconds="$2"
+  local deadline=$((SECONDS + timeout_seconds))
+  local count=""
+
+  # DDS discovery is asynchronous.  The policy client may be fully alive
+  # while its publisher has not appeared in `ros2 topic info` yet, so do not
+  # reject the stack on a single early query.
+  while (( SECONDS < deadline )); do
+    count="$(publisher_count "${topic}")"
+    if [[ "${count}" == "1" ]]; then
+      echo "SMOLVLA_JOINT_PUBLISHER_READY topic=${topic} count=1"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  count="$(publisher_count "${topic}")"
+  echo "ERROR: expected exactly one SmolVLA joint publisher on ${topic} after ${timeout_seconds}s; observed count=${count:-unavailable}." >&2
+  return 1
+}
+
 preflight() {
   [[ -r "${CONFIG}" ]] || { echo "ERROR: missing ${CONFIG}" >&2; return 1; }
   ping -c 1 -W 1 192.168.2.226 >/dev/null || {
@@ -223,9 +246,7 @@ prepare_stack() {
 
 enter_servo() {
   wait_service /smolvla/set_enabled 20
-  [[ "$(publisher_count /right_arm/teleop_joint_command)" == "1" ]] || {
-    echo "ERROR: expected exactly one SmolVLA joint publisher." >&2; exit 1;
-  }
+  wait_for_exactly_one_publisher /right_arm/teleop_joint_command 20
   wait_status 10 robot_powered_on=1 robot_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
   call_bool /right_arm/set_motion_enabled true
   wait_status 15 motion_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
