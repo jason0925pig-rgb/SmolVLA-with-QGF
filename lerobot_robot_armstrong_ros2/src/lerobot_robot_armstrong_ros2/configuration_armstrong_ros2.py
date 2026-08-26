@@ -68,6 +68,9 @@ class ArmstrongRos2Config(RobotConfig):
     )
     max_target_error_rad: float = 0.50
     small_envelope_overshoot_rad: float = 0.03
+    # J1/J3/J5/J7 may be reported modulo 2π by the controller.  The adapter
+    # canonicalizes only these axes before model/safety-envelope comparisons.
+    wraparound_joint_indices: tuple[int, ...] = (0, 2, 4, 6)
     gripper_open_threshold: float = 0.15
     gripper_close_threshold: float = 0.85
     gripper_confirmation_frames: int = 10

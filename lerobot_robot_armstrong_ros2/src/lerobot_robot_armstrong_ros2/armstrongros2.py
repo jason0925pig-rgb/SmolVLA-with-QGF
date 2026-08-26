@@ -24,6 +24,8 @@ from lerobot_robot_armstrong_ros2.smolvla_guard import (
     PolicySafetyError,
     TaskCompletionConfig,
     TaskCompletionDetector,
+    canonicalize_joints_for_envelope,
+    controller_targets_near_measured_joints,
     guard_policy_action,
     validate_initial_pose,
 )
@@ -98,6 +100,7 @@ class ArmstrongRos2(Robot):
             small_envelope_overshoot_rad=config.small_envelope_overshoot_rad,
             gripper_open_threshold=config.gripper_open_threshold,
             gripper_close_threshold=config.gripper_close_threshold,
+            wraparound_joint_indices=tuple(config.wraparound_joint_indices),
         )
         self._gripper_filter = GripperTemporalFilter(
             GripperTemporalConfig(
@@ -399,7 +402,13 @@ class ArmstrongRos2(Robot):
     def get_observation(self) -> dict[str, Any]:
         if not self._connected:
             raise RuntimeError("robot adapter is not connected")
-        joints, gripper_closed, chest, wrist = self._snapshot()
+        raw_joints, gripper_closed, chest, wrist = self._snapshot()
+        joints = canonicalize_joints_for_envelope(
+            raw_joints,
+            self._guard_config.task_lower,
+            self._guard_config.task_upper,
+            self._guard_config.wraparound_joint_indices,
+        )
         self._update_task_completion(joints, gripper_closed)
         return {
             **dict(zip(JOINT_NAMES, joints, strict=True)),
@@ -447,17 +456,17 @@ class ArmstrongRos2(Robot):
             response.message = "SmolVLA action gate disabled and STOP published"
             return response
         try:
-            joints, gripper_closed, _, _ = self._snapshot()
+            raw_joints, gripper_closed, _, _ = self._snapshot()
             with self._lock:
                 arm_motion_enabled = self._arm_motion_enabled
             if not arm_motion_enabled:
                 raise PolicySafetyError("arm servo motion gate is not enabled")
-            state = (*joints, float(gripper_closed))
-            validate_initial_pose(
-                state,
+            canonical_state = validate_initial_pose(
+                (*raw_joints, float(gripper_closed)),
                 self._guard_config,
                 require_open_gripper=self.config.require_open_gripper_at_start,
             )
+            joints = canonical_state[:7]
             if self._joint_pub.get_subscription_count() != 1:
                 raise PolicySafetyError(
                     "expected exactly one safe arm-command subscriber"
@@ -511,7 +520,13 @@ class ArmstrongRos2(Robot):
             raise RuntimeError("robot adapter is not connected")
         if not self._action_enabled:
             return action
-        joints, gripper_closed, _, _ = self._snapshot()
+        raw_joints, gripper_closed, _, _ = self._snapshot()
+        joints = canonicalize_joints_for_envelope(
+            raw_joints,
+            self._guard_config.task_lower,
+            self._guard_config.task_upper,
+            self._guard_config.wraparound_joint_indices,
+        )
         predicted = tuple(float(action[name]) for name in (*JOINT_NAMES, GRIPPER_NAME))
         self._publish_policy_action(self._raw_policy_action_pub, predicted)
         try:
@@ -530,7 +545,8 @@ class ArmstrongRos2(Robot):
                 self._node.get_logger().error(
                     "TELEMETRY_EVENT event=model_safety_guard "
                     f'reason="{exc}" raw_gripper={predicted[-1]:.6f} '
-                    f"actual_joints={joints} predicted_joints={predicted[:7]}"
+                    f"actual_joints_raw={raw_joints} actual_joints_canonical={joints} "
+                    f"predicted_joints={predicted[:7]}"
                 )
             raise
 
@@ -547,7 +563,12 @@ class ArmstrongRos2(Robot):
             (*guarded_joints, float(guarded_gripper)),
         )
 
-        self._last_safe_joint_command = tuple(guarded_joints)
+        controller_joints = controller_targets_near_measured_joints(
+            guarded_joints,
+            raw_joints,
+            self._guard_config.wraparound_joint_indices,
+        )
+        self._last_safe_joint_command = controller_joints
         self._publish_joint_command(self._last_safe_joint_command)
         if temporal_gripper.transitioned:
             gripper_message = Bool()
@@ -571,7 +592,8 @@ class ArmstrongRos2(Robot):
                     f"contact={int(self._gripper_contact)} "
                     f"opens={self._model_gripper_open_count} "
                     f"closes={self._model_gripper_close_count} "
-                    f"actual_joints={joints} guarded_joints={guarded_joints}"
+                    f"actual_joints_raw={raw_joints} actual_joints_canonical={joints} "
+                    f"guarded_joints={guarded_joints} controller_joints={controller_joints}"
                 )
         return {
             **dict(zip(JOINT_NAMES, guarded_joints, strict=True)),

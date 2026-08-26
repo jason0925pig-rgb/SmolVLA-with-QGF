@@ -8,6 +8,7 @@ from lerobot_robot_armstrong_ros2.smolvla_guard import (
     PolicySafetyError,
     TaskCompletionConfig,
     TaskCompletionDetector,
+    controller_targets_near_measured_joints,
     guard_policy_action,
     validate_initial_pose,
 )
@@ -58,6 +59,52 @@ class SmolVLAGuardTests(unittest.TestCase):
             guard_policy_action((0.3,) + (0.0,) * 7, (0.0,) * 8, False, config())
         with self.assertRaises(PolicySafetyError):
             guard_policy_action((math.nan,) + (0.0,) * 7, (0.0,) * 8, False, config())
+
+    def test_wraparound_axis_accepts_equivalent_initial_pose_and_target(self):
+        lower = [-1.0] * 7
+        upper = [1.0] * 7
+        lower[4] = 4.118480
+        upper[4] = 5.177725
+        wrapped = PolicySafetyConfig(
+            task_lower=tuple(lower),
+            task_upper=tuple(upper),
+            initial_lower=tuple(lower),
+            initial_upper=tuple(upper),
+            max_target_error_rad=0.25,
+            wraparound_joint_indices=(4,),
+        )
+        raw = [0.0] * 8
+        raw[4] = -1.978191  # Equivalent to 4.304994 rad.
+        canonical = validate_initial_pose(tuple(raw), wrapped)
+        self.assertAlmostEqual(canonical[4], raw[4] + 2.0 * math.pi, places=6)
+
+        target = [0.0] * 8
+        target[4] = 4.35
+        guarded, _ = guard_policy_action(tuple(target), tuple(raw), False, wrapped)
+        self.assertAlmostEqual(guarded[4], 4.35, places=6)
+        controller = controller_targets_near_measured_joints(
+            guarded,
+            tuple(raw[:7]),
+            wrapped.wraparound_joint_indices,
+        )
+        self.assertLess(abs(controller[4] - raw[4]), 0.25)
+
+    def test_non_wraparound_axis_is_not_treated_as_periodic(self):
+        lower = [-1.0] * 7
+        upper = [1.0] * 7
+        lower[1] = 4.118480
+        upper[1] = 5.177725
+        bounded = PolicySafetyConfig(
+            task_lower=tuple(lower),
+            task_upper=tuple(upper),
+            initial_lower=tuple(lower),
+            initial_upper=tuple(upper),
+            wraparound_joint_indices=(),
+        )
+        raw = [0.0] * 8
+        raw[1] = -1.978191
+        with self.assertRaises(PolicySafetyError):
+            validate_initial_pose(tuple(raw), bounded)
 
     def test_gripper_requires_consecutive_decisive_frames(self):
         filter_ = GripperTemporalFilter(
