@@ -20,6 +20,11 @@ QGF_TARGET="${QGF_QGF_EPISODE_COUNT:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
 COMPARISON_TAG="$(printf '%s' "${COMPARISON_TAG_B64}" | base64 --decode)"
+# The client launcher reads SMOLVLA_TASK, while the Windows collectors pass
+# the task safely as SMOLVLA_TASK_B64.  Export the decoded value before any
+# policy client is started so a non-default task cannot silently fall back to
+# the historical water-bottle prompt.
+export SMOLVLA_TASK="${TASK}"
 RUNTIME_DIR="/tmp/one_arm_smolvla_${UID}"
 SERVER_PID_FILE="${RUNTIME_DIR}/policy_server.pid"
 CLIENT_PID_FILE="${RUNTIME_DIR}/policy_client.pid"
@@ -362,6 +367,7 @@ configure_policy_mode "${CURRENT_MODE}"
 echo "============================================================"
 echo "Continuous real-robot QGF collection"
 echo "Task: ${TASK}"
+echo "SMOLVLA_EFFECTIVE_TASK=${SMOLVLA_TASK}"
 if (( PAIRED_MODE )); then
   echo "Interactive paired mode: initial=${CURRENT_MODE}; baseline_target=${BASELINE_TARGET}; qgf_target=${QGF_TARGET}"
 else
