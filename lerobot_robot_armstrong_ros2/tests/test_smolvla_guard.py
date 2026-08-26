@@ -89,6 +89,38 @@ class SmolVLAGuardTests(unittest.TestCase):
         )
         self.assertLess(abs(controller[4] - raw[4]), 0.25)
 
+    def test_wraparound_feedback_just_outside_envelope_is_not_a_full_turn_error(self):
+        lower = [-1.0] * 7
+        upper = [1.0] * 7
+        lower[4] = 4.118480
+        upper[4] = 5.245894
+        wrapped = PolicySafetyConfig(
+            task_lower=tuple(lower),
+            task_upper=tuple(upper),
+            initial_lower=tuple(lower),
+            initial_upper=tuple(upper),
+            max_target_error_rad=0.50,
+            small_envelope_overshoot_rad=math.radians(10.0),
+            wraparound_joint_indices=(4,),
+        )
+        # Same physical configuration as 4.118471 rad, but reported by the
+        # controller one turn lower and 9 µrad under the recorded bound.
+        raw = [0.0] * 8
+        raw[4] = 4.118471 - 2.0 * math.pi
+        target = [0.0] * 8
+        target[4] = 4.080288
+
+        guarded, _ = guard_policy_action(tuple(target), tuple(raw), False, wrapped)
+        # The 10-degree soft margin permits the target then clamps it to the
+        # task boundary.  It must not appear as a 2π target error.
+        self.assertAlmostEqual(guarded[4], lower[4], places=6)
+        controller = controller_targets_near_measured_joints(
+            guarded,
+            tuple(raw[:7]),
+            wrapped.wraparound_joint_indices,
+        )
+        self.assertLess(abs(controller[4] - raw[4]), 0.001)
+
     def test_non_wraparound_axis_is_not_treated_as_periodic(self):
         lower = [-1.0] * 7
         upper = [1.0] * 7

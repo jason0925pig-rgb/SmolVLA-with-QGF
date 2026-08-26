@@ -395,7 +395,14 @@ def canonicalize_joints_for_envelope(
     upper: Sequence[float],
     wraparound_joint_indices: Sequence[int],
 ) -> tuple[float, ...]:
-    """Express configured modulo-2π axes in the demonstrated coordinates."""
+    """Express configured modulo-2π axes in the demonstrated coordinates.
+
+    A controller may return a continuous axis one full turn below the training
+    representation even when it is a little outside the recorded envelope.
+    Map it to the representation nearest the envelope midpoint *before* the
+    caller checks that envelope.  This avoids comparing -2.16 rad feedback to
+    a physically equivalent +4.08 rad target as if they were 2π apart.
+    """
 
     checked = _finite_tuple(joints, JOINT_COUNT, "joint state")
     lower_checked = _finite_tuple(lower, JOINT_COUNT, "joint lower envelope")
@@ -405,12 +412,10 @@ def canonicalize_joints_for_envelope(
     for index, (value, low, high) in enumerate(
         zip(checked, lower_checked, upper_checked, strict=True)
     ):
-        equivalent = (
-            _equivalent_angle_in_interval(value, low, high)
-            if index in wraparound
-            else None
-        )
-        canonical.append(value if equivalent is None else equivalent)
+        if index in wraparound:
+            midpoint = (low + high) / 2.0
+            value = value + TAU * round((midpoint - value) / TAU)
+        canonical.append(value)
     return tuple(canonical)
 
 
