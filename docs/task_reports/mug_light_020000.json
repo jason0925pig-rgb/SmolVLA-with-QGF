@@ -1,0 +1,15 @@
+{
+  "checkpoint": "020000",
+  "mode": "light",
+  "val_episodes": [
+    9,
+    24,
+    29,
+    40,
+    49
+  ],
+  "val_flow_loss": 0.04242898011352736,
+  "joint_mae_rad": 0.015170760452747345,
+  "gripper_raw_mae": 0.004340018145740032,
+  "n_samples": 256
+}
