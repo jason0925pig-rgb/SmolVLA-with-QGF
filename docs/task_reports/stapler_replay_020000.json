@@ -1,0 +1,66 @@
+{
+  "checkpoint": "020000",
+  "mode": "replay",
+  "val_episodes": [
+    9,
+    24,
+    29,
+    40,
+    49
+  ],
+  "per_episode": [
+    {
+      "ep": 9,
+      "close_err_s": 0.0,
+      "open_err_s": 0.0,
+      "early_open": 0,
+      "missed_open": 0,
+      "flips_pred": 2,
+      "chunk_first_mae": 0.023366792574336732
+    },
+    {
+      "ep": 24,
+      "close_err_s": 0.0,
+      "open_err_s": 0.0,
+      "early_open": 0,
+      "missed_open": 0,
+      "flips_pred": 2,
+      "chunk_first_mae": 0.011228684179495728
+    },
+    {
+      "ep": 29,
+      "close_err_s": 0.0,
+      "open_err_s": 0.0,
+      "early_open": 0,
+      "missed_open": 0,
+      "flips_pred": 2,
+      "chunk_first_mae": 0.011998830950869888
+    },
+    {
+      "ep": 40,
+      "close_err_s": 0.0,
+      "open_err_s": 0.0,
+      "early_open": 0,
+      "missed_open": 0,
+      "flips_pred": 2,
+      "chunk_first_mae": 0.012906600994124228
+    },
+    {
+      "ep": 49,
+      "close_err_s": 0.0,
+      "open_err_s": 0.0,
+      "early_open": 0,
+      "missed_open": 0,
+      "flips_pred": 2,
+      "chunk_first_mae": 0.015931283728065664
+    }
+  ],
+  "close_err_mean_s": 0.0,
+  "open_err_mean_s": 0.0,
+  "early_open_rate": 0.0,
+  "missed_open_rate": 0.0,
+  "closed_f1": 1.0,
+  "flips_mean": 2.0,
+  "joint_chunk_mae": 0.01508643848537845,
+  "contact_hold": "not simulatable offline (no contact signal)"
+}
