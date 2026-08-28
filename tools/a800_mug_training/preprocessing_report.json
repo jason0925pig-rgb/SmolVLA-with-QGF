@@ -1,0 +1,257 @@
+{
+  "run_id": "20260827_mug_purple_box_50_45train_5val",
+  "truncation": "none (single-stage task)",
+  "stats_scope": "global stats from the 45 TRAIN episodes only",
+  "episodes": [
+    {
+      "old_index": 100,
+      "new_index": 0,
+      "length": 1280
+    },
+    {
+      "old_index": 101,
+      "new_index": 1,
+      "length": 1116
+    },
+    {
+      "old_index": 102,
+      "new_index": 2,
+      "length": 1161
+    },
+    {
+      "old_index": 103,
+      "new_index": 3,
+      "length": 1091
+    },
+    {
+      "old_index": 104,
+      "new_index": 4,
+      "length": 1228
+    },
+    {
+      "old_index": 105,
+      "new_index": 5,
+      "length": 1357
+    },
+    {
+      "old_index": 106,
+      "new_index": 6,
+      "length": 1275
+    },
+    {
+      "old_index": 107,
+      "new_index": 7,
+      "length": 1244
+    },
+    {
+      "old_index": 108,
+      "new_index": 8,
+      "length": 1474
+    },
+    {
+      "old_index": 109,
+      "new_index": 9,
+      "length": 1123
+    },
+    {
+      "old_index": 110,
+      "new_index": 10,
+      "length": 1306
+    },
+    {
+      "old_index": 111,
+      "new_index": 11,
+      "length": 1201
+    },
+    {
+      "old_index": 112,
+      "new_index": 12,
+      "length": 1400
+    },
+    {
+      "old_index": 113,
+      "new_index": 13,
+      "length": 1503
+    },
+    {
+      "old_index": 114,
+      "new_index": 14,
+      "length": 1071
+    },
+    {
+      "old_index": 115,
+      "new_index": 15,
+      "length": 1193
+    },
+    {
+      "old_index": 116,
+      "new_index": 16,
+      "length": 1164
+    },
+    {
+      "old_index": 117,
+      "new_index": 17,
+      "length": 1153
+    },
+    {
+      "old_index": 118,
+      "new_index": 18,
+      "length": 1258
+    },
+    {
+      "old_index": 119,
+      "new_index": 19,
+      "length": 1101
+    },
+    {
+      "old_index": 120,
+      "new_index": 20,
+      "length": 1119
+    },
+    {
+      "old_index": 121,
+      "new_index": 21,
+      "length": 960
+    },
+    {
+      "old_index": 122,
+      "new_index": 22,
+      "length": 1328
+    },
+    {
+      "old_index": 123,
+      "new_index": 23,
+      "length": 1351
+    },
+    {
+      "old_index": 124,
+      "new_index": 24,
+      "length": 1048
+    },
+    {
+      "old_index": 125,
+      "new_index": 25,
+      "length": 1227
+    },
+    {
+      "old_index": 126,
+      "new_index": 26,
+      "length": 1259
+    },
+    {
+      "old_index": 127,
+      "new_index": 27,
+      "length": 1435
+    },
+    {
+      "old_index": 128,
+      "new_index": 28,
+      "length": 1318
+    },
+    {
+      "old_index": 129,
+      "new_index": 29,
+      "length": 1102
+    },
+    {
+      "old_index": 130,
+      "new_index": 30,
+      "length": 1107
+    },
+    {
+      "old_index": 131,
+      "new_index": 31,
+      "length": 1065
+    },
+    {
+      "old_index": 132,
+      "new_index": 32,
+      "length": 1044
+    },
+    {
+      "old_index": 133,
+      "new_index": 33,
+      "length": 1344
+    },
+    {
+      "old_index": 134,
+      "new_index": 34,
+      "length": 1274
+    },
+    {
+      "old_index": 135,
+      "new_index": 35,
+      "length": 1230
+    },
+    {
+      "old_index": 136,
+      "new_index": 36,
+      "length": 1344
+    },
+    {
+      "old_index": 137,
+      "new_index": 37,
+      "length": 1454
+    },
+    {
+      "old_index": 138,
+      "new_index": 38,
+      "length": 1440
+    },
+    {
+      "old_index": 139,
+      "new_index": 39,
+      "length": 1731
+    },
+    {
+      "old_index": 140,
+      "new_index": 40,
+      "length": 1427
+    },
+    {
+      "old_index": 141,
+      "new_index": 41,
+      "length": 1540
+    },
+    {
+      "old_index": 142,
+      "new_index": 42,
+      "length": 1779
+    },
+    {
+      "old_index": 143,
+      "new_index": 43,
+      "length": 1030
+    },
+    {
+      "old_index": 144,
+      "new_index": 44,
+      "length": 999
+    },
+    {
+      "old_index": 145,
+      "new_index": 45,
+      "length": 915
+    },
+    {
+      "old_index": 146,
+      "new_index": 46,
+      "length": 991
+    },
+    {
+      "old_index": 147,
+      "new_index": 47,
+      "length": 890
+    },
+    {
+      "old_index": 148,
+      "new_index": 48,
+      "length": 1294
+    },
+    {
+      "old_index": 149,
+      "new_index": 49,
+      "length": 1246
+    }
+  ]
+}

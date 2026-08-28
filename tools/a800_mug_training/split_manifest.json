@@ -1,0 +1,361 @@
+{
+  "seed": 1000,
+  "rule": "rng.choice over sorted new indices 0..49, size 5, no replacement",
+  "validation_new_indices": [
+    9,
+    24,
+    29,
+    40,
+    49
+  ],
+  "train_new_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    25,
+    26,
+    27,
+    28,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48
+  ],
+  "task_text": "把水杯放到紫色的箱子上",
+  "mapping": [
+    {
+      "old": 100,
+      "new": 0,
+      "split": "train",
+      "length": 1280
+    },
+    {
+      "old": 101,
+      "new": 1,
+      "split": "train",
+      "length": 1116
+    },
+    {
+      "old": 102,
+      "new": 2,
+      "split": "train",
+      "length": 1161
+    },
+    {
+      "old": 103,
+      "new": 3,
+      "split": "train",
+      "length": 1091
+    },
+    {
+      "old": 104,
+      "new": 4,
+      "split": "train",
+      "length": 1228
+    },
+    {
+      "old": 105,
+      "new": 5,
+      "split": "train",
+      "length": 1357
+    },
+    {
+      "old": 106,
+      "new": 6,
+      "split": "train",
+      "length": 1275
+    },
+    {
+      "old": 107,
+      "new": 7,
+      "split": "train",
+      "length": 1244
+    },
+    {
+      "old": 108,
+      "new": 8,
+      "split": "train",
+      "length": 1474
+    },
+    {
+      "old": 109,
+      "new": 9,
+      "split": "validation",
+      "length": 1123
+    },
+    {
+      "old": 110,
+      "new": 10,
+      "split": "train",
+      "length": 1306
+    },
+    {
+      "old": 111,
+      "new": 11,
+      "split": "train",
+      "length": 1201
+    },
+    {
+      "old": 112,
+      "new": 12,
+      "split": "train",
+      "length": 1400
+    },
+    {
+      "old": 113,
+      "new": 13,
+      "split": "train",
+      "length": 1503
+    },
+    {
+      "old": 114,
+      "new": 14,
+      "split": "train",
+      "length": 1071
+    },
+    {
+      "old": 115,
+      "new": 15,
+      "split": "train",
+      "length": 1193
+    },
+    {
+      "old": 116,
+      "new": 16,
+      "split": "train",
+      "length": 1164
+    },
+    {
+      "old": 117,
+      "new": 17,
+      "split": "train",
+      "length": 1153
+    },
+    {
+      "old": 118,
+      "new": 18,
+      "split": "train",
+      "length": 1258
+    },
+    {
+      "old": 119,
+      "new": 19,
+      "split": "train",
+      "length": 1101
+    },
+    {
+      "old": 120,
+      "new": 20,
+      "split": "train",
+      "length": 1119
+    },
+    {
+      "old": 121,
+      "new": 21,
+      "split": "train",
+      "length": 960
+    },
+    {
+      "old": 122,
+      "new": 22,
+      "split": "train",
+      "length": 1328
+    },
+    {
+      "old": 123,
+      "new": 23,
+      "split": "train",
+      "length": 1351
+    },
+    {
+      "old": 124,
+      "new": 24,
+      "split": "validation",
+      "length": 1048
+    },
+    {
+      "old": 125,
+      "new": 25,
+      "split": "train",
+      "length": 1227
+    },
+    {
+      "old": 126,
+      "new": 26,
+      "split": "train",
+      "length": 1259
+    },
+    {
+      "old": 127,
+      "new": 27,
+      "split": "train",
+      "length": 1435
+    },
+    {
+      "old": 128,
+      "new": 28,
+      "split": "train",
+      "length": 1318
+    },
+    {
+      "old": 129,
+      "new": 29,
+      "split": "validation",
+      "length": 1102
+    },
+    {
+      "old": 130,
+      "new": 30,
+      "split": "train",
+      "length": 1107
+    },
+    {
+      "old": 131,
+      "new": 31,
+      "split": "train",
+      "length": 1065
+    },
+    {
+      "old": 132,
+      "new": 32,
+      "split": "train",
+      "length": 1044
+    },
+    {
+      "old": 133,
+      "new": 33,
+      "split": "train",
+      "length": 1344
+    },
+    {
+      "old": 134,
+      "new": 34,
+      "split": "train",
+      "length": 1274
+    },
+    {
+      "old": 135,
+      "new": 35,
+      "split": "train",
+      "length": 1230
+    },
+    {
+      "old": 136,
+      "new": 36,
+      "split": "train",
+      "length": 1344
+    },
+    {
+      "old": 137,
+      "new": 37,
+      "split": "train",
+      "length": 1454
+    },
+    {
+      "old": 138,
+      "new": 38,
+      "split": "train",
+      "length": 1440
+    },
+    {
+      "old": 139,
+      "new": 39,
+      "split": "train",
+      "length": 1731
+    },
+    {
+      "old": 140,
+      "new": 40,
+      "split": "validation",
+      "length": 1427
+    },
+    {
+      "old": 141,
+      "new": 41,
+      "split": "train",
+      "length": 1540
+    },
+    {
+      "old": 142,
+      "new": 42,
+      "split": "train",
+      "length": 1779
+    },
+    {
+      "old": 143,
+      "new": 43,
+      "split": "train",
+      "length": 1030
+    },
+    {
+      "old": 144,
+      "new": 44,
+      "split": "train",
+      "length": 999
+    },
+    {
+      "old": 145,
+      "new": 45,
+      "split": "train",
+      "length": 915
+    },
+    {
+      "old": 146,
+      "new": 46,
+      "split": "train",
+      "length": 991
+    },
+    {
+      "old": 147,
+      "new": 47,
+      "split": "train",
+      "length": 890
+    },
+    {
+      "old": 148,
+      "new": 48,
+      "split": "train",
+      "length": 1294
+    },
+    {
+      "old": 149,
+      "new": 49,
+      "split": "validation",
+      "length": 1246
+    }
+  ]
+}
