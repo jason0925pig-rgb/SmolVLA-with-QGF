@@ -46,8 +46,8 @@ class ArmstrongRos2Config(RobotConfig):
         4.888320,
     )
 
-    # All 50 demonstrated first frames plus 15 degrees, clamped to the task
-    # envelope above.  The gripper starts open.
+    # Base demonstrated-start envelope.  The explicit tolerance below is
+    # applied only by the pre-MOVE initial-pose check.
     initial_lower: tuple[float, ...] = (
         -2.834686,
         -0.305685,
@@ -67,10 +67,20 @@ class ArmstrongRos2Config(RobotConfig):
         4.888320,
     )
     max_target_error_rad: float = 0.50
-    small_envelope_overshoot_rad: float = 0.03
-    gripper_open_threshold: float = 0.15
+    initial_envelope_overshoot_rad: float = 0.0
+    # Learned policies naturally interpolate slightly beyond the extrema of a
+    # finite demonstration set.  This is an envelope soft margin only; the
+    # physical joint limits and max_target_error_rad remain independent.
+    small_envelope_overshoot_rad: float = 0.5235987755982988  # 30 degrees
+    # J1/J3/J5/J7 may be reported modulo 2π by the controller.  Safety checks
+    # always use the canonical task-envelope representation.  Policy inputs can
+    # independently stay in raw controller coordinates when that is how the
+    # selected checkpoint's demonstrations were recorded.
+    wraparound_joint_indices: tuple[int, ...] = (0, 2, 4, 6)
+    canonicalize_policy_observation: bool = True
+    gripper_open_threshold: float = 0.40
     gripper_close_threshold: float = 0.85
-    gripper_confirmation_frames: int = 10
+    gripper_confirmation_frames: int = 5
     gripper_min_state_dwell_seconds: float = 2.0
     gripper_contact_hold_seconds: float = 3.0
 

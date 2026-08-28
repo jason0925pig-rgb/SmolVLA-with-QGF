@@ -1,6 +1,8 @@
 import math
+from types import SimpleNamespace
 import unittest
 
+from lerobot_robot_armstrong_ros2.armstrongros2 import ArmstrongRos2, JOINT_NAMES
 from lerobot_robot_armstrong_ros2.smolvla_guard import (
     GripperTemporalConfig,
     GripperTemporalFilter,
@@ -8,6 +10,8 @@ from lerobot_robot_armstrong_ros2.smolvla_guard import (
     PolicySafetyError,
     TaskCompletionConfig,
     TaskCompletionDetector,
+    canonicalize_joints_for_envelope,
+    controller_targets_near_measured_joints,
     guard_policy_action,
     validate_initial_pose,
 )
@@ -31,6 +35,21 @@ class SmolVLAGuardTests(unittest.TestCase):
             validate_initial_pose((0.3,) + (0.0,) * 7, config())
         with self.assertRaises(PolicySafetyError):
             validate_initial_pose((0.0,) * 7 + (1.0,), config())
+
+    def test_initial_pose_explicit_twenty_degree_tolerance(self):
+        tolerant = PolicySafetyConfig(
+            task_lower=(-1.0,) * 7,
+            task_upper=(1.0,) * 7,
+            initial_lower=(-0.2,) * 7,
+            initial_upper=(0.2,) * 7,
+            initial_envelope_overshoot_rad=math.radians(20.0),
+        )
+        # 0.50 rad is outside the base 0.20-rad start envelope but inside the
+        # requested additional 20-degree tolerance (effective upper 0.5491).
+        accepted = validate_initial_pose((0.50,) + (0.0,) * 7, tolerant)
+        self.assertAlmostEqual(accepted[0], 0.50)
+        with self.assertRaises(PolicySafetyError):
+            validate_initial_pose((0.56,) + (0.0,) * 7, tolerant)
 
     def test_action_is_absolute_and_hysteretic(self):
         joints, gripper = guard_policy_action(
@@ -58,6 +77,85 @@ class SmolVLAGuardTests(unittest.TestCase):
             guard_policy_action((0.3,) + (0.0,) * 7, (0.0,) * 8, False, config())
         with self.assertRaises(PolicySafetyError):
             guard_policy_action((math.nan,) + (0.0,) * 7, (0.0,) * 8, False, config())
+
+    def test_raw_policy_input_and_canonical_safety_coordinates_are_separate(self):
+        lower = [-1.0] * 7
+        upper = [1.0] * 7
+        lower[4] = 4.118480
+        upper[4] = 5.177725
+        wrapped = PolicySafetyConfig(
+            task_lower=tuple(lower),
+            task_upper=tuple(upper),
+            initial_lower=tuple(lower),
+            initial_upper=tuple(upper),
+            max_target_error_rad=0.50,
+            wraparound_joint_indices=(4,),
+        )
+        raw_joints = [0.0] * 7
+        raw_joints[4] = -1.978191
+        canonical = canonicalize_joints_for_envelope(
+            raw_joints,
+            wrapped.task_lower,
+            wrapped.task_upper,
+            wrapped.wraparound_joint_indices,
+        )
+        self.assertAlmostEqual(raw_joints[4], -1.978191, places=6)
+        self.assertAlmostEqual(canonical[4], raw_joints[4] + 2.0 * math.pi, places=6)
+
+        # A raw-coordinate checkpoint can emit a negative J5.  The guard maps
+        # it into the positive safety envelope, then the controller mapping
+        # returns the equivalent target close to the measured raw position.
+        predicted = [0.0] * 8
+        predicted[4] = -1.93
+        guarded, _ = guard_policy_action(
+            tuple(predicted), tuple(raw_joints) + (0.0,), False, wrapped
+        )
+        self.assertAlmostEqual(guarded[4], -1.93 + 2.0 * math.pi, places=6)
+        controller = controller_targets_near_measured_joints(
+            guarded, raw_joints, wrapped.wraparound_joint_indices
+        )
+        self.assertAlmostEqual(controller[4], -1.93, places=6)
+
+    def test_only_configured_axes_receive_periodic_conversion(self):
+        raw = (-2.43, 0.23, -0.24, -2.11, -1.94, -0.53, 4.62)
+        lower = (-2.86, -0.68, -1.26, -2.34, 3.97, -1.15, 4.26)
+        upper = (-1.16, 0.65, 0.55, -0.98, 5.09, 0.08, 5.36)
+        canonical = canonicalize_joints_for_envelope(
+            raw, lower, upper, (0, 2, 4, 6)
+        )
+        changed = [
+            index for index, (before, after) in enumerate(zip(raw, canonical))
+            if not math.isclose(before, after, abs_tol=1e-9)
+        ]
+        self.assertEqual(changed, [4])
+
+    def test_raw_policy_observation_keeps_completion_in_safety_coordinates(self):
+        lower = [-3.0] * 7
+        upper = [3.0] * 7
+        lower[4] = 4.0
+        upper[4] = 5.2
+        robot = ArmstrongRos2.__new__(ArmstrongRos2)
+        robot._connected = True
+        robot.config = SimpleNamespace(canonicalize_policy_observation=False)
+        robot._guard_config = PolicySafetyConfig(
+            task_lower=tuple(lower),
+            task_upper=tuple(upper),
+            initial_lower=tuple(lower),
+            initial_upper=tuple(upper),
+            wraparound_joint_indices=(4,),
+        )
+        raw = (0.0, 0.1, 0.2, 0.3, -1.94, 0.5, 4.6)
+        robot._snapshot = lambda: (raw, False, "chest", "wrist")
+        completion_inputs = []
+        robot._update_task_completion = (
+            lambda joints, gripper: completion_inputs.append((joints, gripper))
+        )
+
+        observation = ArmstrongRos2.get_observation(robot)
+        self.assertAlmostEqual(observation[JOINT_NAMES[4]], raw[4], places=6)
+        self.assertAlmostEqual(
+            completion_inputs[0][0][4], raw[4] + 2.0 * math.pi, places=6
+        )
 
     def test_gripper_requires_consecutive_decisive_frames(self):
         filter_ = GripperTemporalFilter(

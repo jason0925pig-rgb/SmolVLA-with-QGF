@@ -14,6 +14,10 @@ from typing import Sequence
 
 JOINT_COUNT = 7
 ACTION_DIM = 8
+TAU = 2.0 * math.pi
+# The vendor exposes these revolute axes modulo 2π on some controller paths.
+# J2/J4/J6 have bounded travel and must remain ordinary absolute coordinates.
+DEFAULT_WRAPAROUND_JOINT_INDICES = (0, 2, 4, 6)
 
 
 class PolicySafetyError(ValueError):
@@ -27,9 +31,11 @@ class PolicySafetyConfig:
     initial_lower: tuple[float, ...]
     initial_upper: tuple[float, ...]
     max_target_error_rad: float = 0.25
+    initial_envelope_overshoot_rad: float = 0.0
     small_envelope_overshoot_rad: float = 0.03
     gripper_open_threshold: float = 0.15
     gripper_close_threshold: float = 0.85
+    wraparound_joint_indices: tuple[int, ...] = DEFAULT_WRAPAROUND_JOINT_INDICES
 
     def __post_init__(self) -> None:
         for name in ("task_lower", "task_upper", "initial_lower", "initial_upper"):
@@ -44,10 +50,19 @@ class PolicySafetyConfig:
                 raise ValueError("each initial lower limit must be below its upper limit")
         if not math.isfinite(self.max_target_error_rad) or self.max_target_error_rad <= 0:
             raise ValueError("max_target_error_rad must be positive")
+        if (
+            not math.isfinite(self.initial_envelope_overshoot_rad)
+            or self.initial_envelope_overshoot_rad < 0
+        ):
+            raise ValueError("initial_envelope_overshoot_rad cannot be negative")
         if self.small_envelope_overshoot_rad < 0:
             raise ValueError("small_envelope_overshoot_rad cannot be negative")
         if not 0 <= self.gripper_open_threshold < self.gripper_close_threshold <= 1:
             raise ValueError("gripper thresholds must satisfy 0 <= open < close <= 1")
+        if len(set(self.wraparound_joint_indices)) != len(self.wraparound_joint_indices):
+            raise ValueError("wraparound joint indices must be unique")
+        if any(index < 0 or index >= JOINT_COUNT for index in self.wraparound_joint_indices):
+            raise ValueError("wraparound joint indices must be in [0, 6]")
 
 
 @dataclass(frozen=True)
@@ -361,6 +376,61 @@ def _finite_tuple(values: Sequence[float], expected: int, name: str) -> tuple[fl
     return result
 
 
+def _equivalent_angle_in_interval(
+    value: float,
+    lower: float,
+    upper: float,
+) -> float | None:
+    """Return the modulo-2π representation of ``value`` inside an interval."""
+
+    first_k = math.ceil((lower - value) / TAU)
+    candidate = value + first_k * TAU
+    if candidate <= upper:
+        return candidate
+    return None
+
+
+def canonicalize_joints_for_envelope(
+    joints: Sequence[float],
+    lower: Sequence[float],
+    upper: Sequence[float],
+    wraparound_joint_indices: Sequence[int],
+) -> tuple[float, ...]:
+    """Express configured modulo-2π axes near the task-envelope midpoint."""
+
+    checked = _finite_tuple(joints, JOINT_COUNT, "joint state")
+    lower_checked = _finite_tuple(lower, JOINT_COUNT, "joint lower envelope")
+    upper_checked = _finite_tuple(upper, JOINT_COUNT, "joint upper envelope")
+    wraparound = set(wraparound_joint_indices)
+    canonical: list[float] = []
+    for index, (value, low, high) in enumerate(
+        zip(checked, lower_checked, upper_checked, strict=True)
+    ):
+        if index in wraparound:
+            midpoint = (low + high) / 2.0
+            value = value + TAU * round((midpoint - value) / TAU)
+        canonical.append(value)
+    return tuple(canonical)
+
+
+def controller_targets_near_measured_joints(
+    canonical_targets: Sequence[float],
+    measured_joints: Sequence[float],
+    wraparound_joint_indices: Sequence[int],
+) -> tuple[float, ...]:
+    """Map safe canonical targets to equivalent controller coordinates."""
+
+    targets = _finite_tuple(canonical_targets, JOINT_COUNT, "canonical targets")
+    measured = _finite_tuple(measured_joints, JOINT_COUNT, "measured joints")
+    wraparound = set(wraparound_joint_indices)
+    return tuple(
+        target + TAU * round((current - target) / TAU)
+        if index in wraparound
+        else target
+        for index, (target, current) in enumerate(zip(targets, measured, strict=True))
+    )
+
+
 def validate_initial_pose(
     state: Sequence[float],
     config: PolicySafetyConfig,
@@ -370,7 +440,15 @@ def validate_initial_pose(
     """Validate the live 7+1 state before an autonomous rollout is armed."""
 
     checked = _finite_tuple(state, ACTION_DIM, "state")
-    joints = checked[:JOINT_COUNT]
+    joints = canonicalize_joints_for_envelope(
+        checked[:JOINT_COUNT],
+        config.initial_lower,
+        config.initial_upper,
+        config.wraparound_joint_indices,
+    )
+    tolerance = config.initial_envelope_overshoot_rad
+    effective_lower = tuple(value - tolerance for value in config.initial_lower)
+    effective_upper = tuple(value + tolerance for value in config.initial_upper)
     outside = [
         (
             index + 1,
@@ -379,7 +457,7 @@ def validate_initial_pose(
             upper,
         )
         for index, (value, lower, upper) in enumerate(
-            zip(joints, config.initial_lower, config.initial_upper, strict=True)
+            zip(joints, effective_lower, effective_upper, strict=True)
         )
         if value < lower or value > upper
     ]
@@ -393,7 +471,7 @@ def validate_initial_pose(
         )
     if require_open_gripper and checked[-1] >= config.gripper_close_threshold:
         raise PolicySafetyError("initial gripper state is closed; the demonstrations start open")
-    return checked
+    return (*joints, checked[-1])
 
 
 def guard_policy_action(
@@ -411,16 +489,31 @@ def guard_policy_action(
 
     action = _finite_tuple(predicted_action, ACTION_DIM, "predicted action")
     state = _finite_tuple(current_state, ACTION_DIM, "current state")
+    current_joints = canonicalize_joints_for_envelope(
+        state[:JOINT_COUNT],
+        config.task_lower,
+        config.task_upper,
+        config.wraparound_joint_indices,
+    )
+    wraparound = set(config.wraparound_joint_indices)
     guarded: list[float] = []
     for index, (target, current, lower, upper) in enumerate(
         zip(
             action[:JOINT_COUNT],
-            state[:JOINT_COUNT],
+            current_joints,
             config.task_lower,
             config.task_upper,
             strict=True,
         )
     ):
+        if index in wraparound:
+            equivalent = _equivalent_angle_in_interval(
+                target,
+                lower - config.small_envelope_overshoot_rad,
+                upper + config.small_envelope_overshoot_rad,
+            )
+            if equivalent is not None:
+                target = equivalent
         if target < lower - config.small_envelope_overshoot_rad or target > upper + config.small_envelope_overshoot_rad:
             raise PolicySafetyError(
                 f"joint {index + 1} target {target:.4f} is outside the demonstrated task envelope"
