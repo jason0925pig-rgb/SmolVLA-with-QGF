@@ -24,6 +24,7 @@ GRIPPER_CLOSE_THRESHOLD="${SMOLVLA_GRIPPER_CLOSE_THRESHOLD:-0.85}"
 GRIPPER_CONFIRMATION_FRAMES="${SMOLVLA_GRIPPER_CONFIRMATION_FRAMES:-5}"
 CANONICALIZE_POLICY_OBSERVATION="${SMOLVLA_CANONICALIZE_POLICY_OBSERVATION:-true}"
 INITIAL_POSE_TOLERANCE_RAD="${SMOLVLA_INITIAL_POSE_TOLERANCE_RAD:-0.0}"
+JOINT2_MAX_TARGET_ERROR_RAD="${SMOLVLA_JOINT2_MAX_TARGET_ERROR_RAD:-0.50}"
 
 [[ -r "${ROS_SETUP}" ]] || { echo "ERROR: missing ${ROS_SETUP}" >&2; exit 2; }
 [[ -r "${WORKSPACE_SETUP}" ]] || { echo "ERROR: build the ROS workspace first" >&2; exit 2; }
@@ -45,18 +46,21 @@ import rclpy
 print("SMOLVLA_ROS_CLIENT_ENV_OK")
 PY
 
-"${VENV}/bin/python" - "${GRIPPER_OPEN_THRESHOLD}" "${GRIPPER_CLOSE_THRESHOLD}" "${GRIPPER_CONFIRMATION_FRAMES}" "${INITIAL_POSE_TOLERANCE_RAD}" <<'PY'
+"${VENV}/bin/python" - "${GRIPPER_OPEN_THRESHOLD}" "${GRIPPER_CLOSE_THRESHOLD}" "${GRIPPER_CONFIRMATION_FRAMES}" "${INITIAL_POSE_TOLERANCE_RAD}" "${JOINT2_MAX_TARGET_ERROR_RAD}" <<'PY'
 import sys
 
 open_threshold, close_threshold = map(float, sys.argv[1:3])
 confirmation_frames = int(sys.argv[3])
 initial_pose_tolerance_rad = float(sys.argv[4])
+joint2_max_target_error_rad = float(sys.argv[5])
 if not 0.0 <= open_threshold < close_threshold <= 1.0:
     raise SystemExit("ERROR: require 0 <= gripper open threshold < close threshold <= 1")
 if confirmation_frames < 1:
     raise SystemExit("ERROR: gripper confirmation frames must be at least 1")
 if initial_pose_tolerance_rad < 0.0:
     raise SystemExit("ERROR: initial pose tolerance cannot be negative")
+if joint2_max_target_error_rad <= 0.0:
+    raise SystemExit("ERROR: joint 2 target-error threshold must be positive")
 PY
 
 case "${CANONICALIZE_POLICY_OBSERVATION}" in
@@ -73,6 +77,7 @@ echo "Policy server=${SERVER_ADDRESS} actions_per_chunk=${ACTIONS_PER_CHUNK} fps
 echo "Gripper filter: open<=${GRIPPER_OPEN_THRESHOLD}, close>=${GRIPPER_CLOSE_THRESHOLD}, confirmation_frames=${GRIPPER_CONFIRMATION_FRAMES}"
 echo "Policy joint observation coordinates: $([[ "${CANONICALIZE_POLICY_OBSERVATION}" == "true" ]] && echo canonical || echo raw)"
 echo "Initial pose tolerance: ${INITIAL_POSE_TOLERANCE_RAD} rad"
+echo "Joint 2 target-error threshold: ${JOINT2_MAX_TARGET_ERROR_RAD} rad"
 exec "${VENV}/bin/python" -m lerobot_robot_armstrong_ros2.async_client \
   --robot.type=armstrong_ros2 \
   --robot.id=armstrong_right \
@@ -80,6 +85,7 @@ exec "${VENV}/bin/python" -m lerobot_robot_armstrong_ros2.async_client \
   --robot.camera_timeout_seconds="${CAMERA_TIMEOUT_SECONDS}" \
   --robot.canonicalize_policy_observation="${CANONICALIZE_POLICY_OBSERVATION}" \
   --robot.initial_envelope_overshoot_rad="${INITIAL_POSE_TOLERANCE_RAD}" \
+  --robot.joint2_max_target_error_rad="${JOINT2_MAX_TARGET_ERROR_RAD}" \
   --robot.gripper_open_threshold="${GRIPPER_OPEN_THRESHOLD}" \
   --robot.gripper_close_threshold="${GRIPPER_CLOSE_THRESHOLD}" \
   --robot.gripper_confirmation_frames="${GRIPPER_CONFIRMATION_FRAMES}" \

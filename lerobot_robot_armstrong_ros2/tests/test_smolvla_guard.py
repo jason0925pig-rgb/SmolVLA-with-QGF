@@ -24,6 +24,7 @@ def config() -> PolicySafetyConfig:
         initial_lower=(-0.2,) * 7,
         initial_upper=(0.2,) * 7,
         max_target_error_rad=0.25,
+        joint2_max_target_error_rad=0.25,
         small_envelope_overshoot_rad=0.03,
     )
 
@@ -78,6 +79,30 @@ class SmolVLAGuardTests(unittest.TestCase):
         with self.assertRaises(PolicySafetyError):
             guard_policy_action((math.nan,) + (0.0,) * 7, (0.0,) * 8, False, config())
 
+    def test_joint2_target_error_override_does_not_weaken_other_joints(self):
+        limits = PolicySafetyConfig(
+            task_lower=(-1.0,) * 7,
+            task_upper=(1.0,) * 7,
+            initial_lower=(-0.2,) * 7,
+            initial_upper=(0.2,) * 7,
+            max_target_error_rad=0.50,
+            joint2_max_target_error_rad=0.75,
+        )
+        accepted, _ = guard_policy_action(
+            (0.0, 0.70) + (0.0,) * 6,
+            (0.0,) * 8,
+            False,
+            limits,
+        )
+        self.assertAlmostEqual(accepted[1], 0.70)
+        with self.assertRaisesRegex(PolicySafetyError, r"joint 1 target error.*0\.5000"):
+            guard_policy_action(
+                (0.70,) + (0.0,) * 7,
+                (0.0,) * 8,
+                False,
+                limits,
+            )
+
     def test_raw_policy_input_and_canonical_safety_coordinates_are_separate(self):
         lower = [-1.0] * 7
         upper = [1.0] * 7
@@ -89,6 +114,7 @@ class SmolVLAGuardTests(unittest.TestCase):
             initial_lower=tuple(lower),
             initial_upper=tuple(upper),
             max_target_error_rad=0.50,
+            joint2_max_target_error_rad=0.50,
             wraparound_joint_indices=(4,),
         )
         raw_joints = [0.0] * 7

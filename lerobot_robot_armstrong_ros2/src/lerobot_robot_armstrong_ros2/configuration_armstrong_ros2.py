@@ -67,6 +67,9 @@ class ArmstrongRos2Config(RobotConfig):
         4.888320,
     )
     max_target_error_rad: float = 0.50
+    # J2 can be given a task-specific override without weakening the other six
+    # joints. The default remains identical to max_target_error_rad.
+    joint2_max_target_error_rad: float = 0.50
     initial_envelope_overshoot_rad: float = 0.0
     # Learned policies naturally interpolate slightly beyond the extrema of a
     # finite demonstration set.  This is an envelope soft margin only; the

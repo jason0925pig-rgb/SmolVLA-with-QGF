@@ -31,6 +31,7 @@ class PolicySafetyConfig:
     initial_lower: tuple[float, ...]
     initial_upper: tuple[float, ...]
     max_target_error_rad: float = 0.25
+    joint2_max_target_error_rad: float = 0.25
     initial_envelope_overshoot_rad: float = 0.0
     small_envelope_overshoot_rad: float = 0.03
     gripper_open_threshold: float = 0.15
@@ -50,6 +51,11 @@ class PolicySafetyConfig:
                 raise ValueError("each initial lower limit must be below its upper limit")
         if not math.isfinite(self.max_target_error_rad) or self.max_target_error_rad <= 0:
             raise ValueError("max_target_error_rad must be positive")
+        if (
+            not math.isfinite(self.joint2_max_target_error_rad)
+            or self.joint2_max_target_error_rad <= 0
+        ):
+            raise ValueError("joint2_max_target_error_rad must be positive")
         if (
             not math.isfinite(self.initial_envelope_overshoot_rad)
             or self.initial_envelope_overshoot_rad < 0
@@ -519,10 +525,13 @@ def guard_policy_action(
                 f"joint {index + 1} target {target:.4f} is outside the demonstrated task envelope"
             )
         target = min(max(target, lower), upper)
-        if abs(target - current) > config.max_target_error_rad:
+        target_error_limit = (
+            config.joint2_max_target_error_rad if index == 1 else config.max_target_error_rad
+        )
+        if abs(target - current) > target_error_limit:
             raise PolicySafetyError(
                 f"joint {index + 1} target error {target - current:+.4f} rad exceeds "
-                f"{config.max_target_error_rad:.4f} rad"
+                f"{target_error_limit:.4f} rad"
             )
         guarded.append(target)
 
