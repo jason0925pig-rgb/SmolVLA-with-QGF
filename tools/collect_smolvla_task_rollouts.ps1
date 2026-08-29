@@ -25,6 +25,9 @@ $profiles = @{
         # representation. Safety checks still canonicalize wraparound joints
         # internally; only the observation sent to the policy stays raw.
         CanonicalizePolicyObservation = "false"
+        # Permit small manual scene-reset drift (5 degrees) without accepting
+        # the much wider 20-degree envelope used by the other task profiles.
+        InitialPoseToleranceRad = "0.0872664625997165"
         Joint2MaxTargetErrorRad = "0.75"
     }
     stapler = @{
