@@ -19,7 +19,7 @@ if ($GripperConfirmationFrames -lt 1) { throw "GripperConfirmationFrames must be
 $profiles = @{
     red_parcel = @{
         Task = "把箱子里的红色包裹拿出来放到桌子上。"
-        Bundle = "/home/nvidia/work/telop/models/smolvla_20260827_red_parcel_out_table"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260828_red_parcel_clean"
         DatasetRoot = "/home/nvidia/work/telop/red_parcel_real_rollouts"
     }
     stapler = @{
