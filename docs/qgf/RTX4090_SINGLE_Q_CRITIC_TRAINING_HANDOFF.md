@@ -417,4 +417,3 @@ export QGF_BETA=<由用户指定的正数>
 6. critic checkpoint 路径、大小、SHA256 和可加载测试；
 7. Orin 部署路径与旧水瓶 critic 是否保持不变；
 8. 明确声明训练/部署准备期间没有上电、使能、伺服或控制机器人。
-
