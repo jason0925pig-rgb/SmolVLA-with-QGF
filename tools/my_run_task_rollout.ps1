@@ -50,8 +50,15 @@ $timeoutDefaults = @{ mug = 150; stapler = 180; red_parcel = 180 }
 $profiles = @{
     red_parcel = @{
         Task = "把箱子里的红色包裹拿出来放到桌子上。"
-        Bundle = "/home/nvidia/work/telop/models/smolvla_20260827_red_parcel_out_table"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260828_red_parcel_clean"
         DatasetRoot = "/home/nvidia/work/telop/red_parcel_real_rollouts"
+        CanonicalizePolicyObservation = "false"
+        # 2026-08-30: upstream ba78d5d set red parcel to a tight 5-degree start
+        # tolerance. Raised to 20 degrees (same as mug/stapler) at the user's
+        # request after the colleague who set it confirmed 20 is acceptable.
+        # The J2 target-error guard stays at upstream's 0.75.
+        InitialPoseToleranceRad = "0.3490658503988659"
+        Joint2MaxTargetErrorRad = "0.75"
     }
     stapler = @{
         Task = "把订书机放进快递纸盒"
@@ -74,16 +81,17 @@ $profile = $profiles[$TaskProfile]
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $openText = $GripperOpenThreshold.ToString($culture)
 $closeText = $GripperCloseThreshold.ToString($culture)
+$initialPoseToleranceRad = if ($profile.ContainsKey("InitialPoseToleranceRad")) { $profile.InitialPoseToleranceRad } else { "0.0" }
+$joint2MaxTargetErrorRad = if ($profile.ContainsKey("Joint2MaxTargetErrorRad")) { $profile.Joint2MaxTargetErrorRad } else { "0.50" }
 $taskBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($profile.Task))
-$runNotes = "$Notes; task_profile=$TaskProfile; policy_mode=baseline; lighting=$Lighting; episode_timeout_s=$TimeoutSeconds; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames"
+$runNotes = "$Notes; task_profile=$TaskProfile; policy_mode=baseline; lighting=$Lighting; episode_timeout_s=$TimeoutSeconds; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames; initial_pose_tolerance_rad=$initialPoseToleranceRad; joint2_max_target_error_rad=$joint2MaxTargetErrorRad"
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($runNotes))
 $comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($TaskProfile))
 $canonicalizePolicyObservation = if ($profile.ContainsKey("CanonicalizePolicyObservation")) { $profile.CanonicalizePolicyObservation } else { "true" }
-$initialPoseToleranceRad = if ($profile.ContainsKey("InitialPoseToleranceRad")) { $profile.InitialPoseToleranceRad } else { "0.0" }
 
 $remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
 $remoteCommand = @"
-cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$($profile.DatasetRoot)' QGF_RUN_MODE='baseline' QGF_BETA='0' QGF_ROLLOUT_TIMEOUT_SECONDS='$TimeoutSeconds' SMOLVLA_ORIN_BUNDLE='$($profile.Bundle)' SMOLVLA_SERVER_MODEL_PATH='$($profile.Bundle)/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$($profile.Bundle)/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='$openText' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='$closeText' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='$GripperConfirmationFrames' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='$canonicalizePolicyObservation' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='$initialPoseToleranceRad' && ./tools/run_qgf_collection_session.sh
+cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_EPISODE_COUNT='$EpisodeCount' QGF_DATASET_ROOT='$($profile.DatasetRoot)' QGF_RUN_MODE='baseline' QGF_BETA='0' QGF_ROLLOUT_TIMEOUT_SECONDS='$TimeoutSeconds' SMOLVLA_ORIN_BUNDLE='$($profile.Bundle)' SMOLVLA_SERVER_MODEL_PATH='$($profile.Bundle)/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$($profile.Bundle)/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='$openText' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='$closeText' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='$GripperConfirmationFrames' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='$canonicalizePolicyObservation' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='$initialPoseToleranceRad' SMOLVLA_JOINT2_MAX_TARGET_ERROR_RAD='$joint2MaxTargetErrorRad' && ./tools/run_qgf_collection_session.sh
 "@.Trim()
 
 Write-Host "SmolVLA task rollout: $TaskProfile"
@@ -95,6 +103,7 @@ Write-Host "Episode time limit: $TimeoutSeconds s ($([math]::Round($TimeoutSecon
 Write-Host "Gripper filter: open<=$openText, close>=$closeText, confirmation=$GripperConfirmationFrames frames"
 Write-Host "Policy joint observation coordinates: $(if ($canonicalizePolicyObservation -eq 'true') { 'canonical' } else { 'raw' })"
 Write-Host "Initial pose tolerance: $initialPoseToleranceRad rad"
+Write-Host "Joint 2 target-error threshold: $joint2MaxTargetErrorRad rad"
 Write-Host "ARM and MOVE will be requested by the remote attended rollout."
 
 & ssh -tt $SshTarget $remoteCommand
