@@ -97,6 +97,7 @@ class ArmstrongRos2(Robot):
             initial_lower=tuple(config.initial_lower),
             initial_upper=tuple(config.initial_upper),
             max_target_error_rad=config.max_target_error_rad,
+            joint2_max_target_error_rad=config.joint2_max_target_error_rad,
             initial_envelope_overshoot_rad=config.initial_envelope_overshoot_rad,
             small_envelope_overshoot_rad=config.small_envelope_overshoot_rad,
             gripper_open_threshold=config.gripper_open_threshold,

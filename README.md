@@ -48,6 +48,14 @@ cd E:\AAA__Github_Project\SmolVLA-with-QGF
 The staged launcher does not move the robot until the operator explicitly
 passes the hardware checks and enters `ARM`, followed later by `MOVE`.
 
+## Reproduce in simulation
+
+Classmates who only need to reproduce the SmolVLA baseline and QGF in LIBERO
+do not need Armstrong hardware or ROS 2. Follow
+[`qgf/docs/smolvla_qgf_simulation_reproduction.md`](qgf/docs/smolvla_qgf_simulation_reproduction.md)
+for the pinned upstream revisions, environment setup, baseline rollout,
+critic training, and fair baseline-versus-QGF evaluation.
+
 ## Collect real-robot QGF rollouts
 
 The continuous collector runs the baseline repeatedly and asks after every

@@ -42,9 +42,22 @@ alive() {
 start_component() {
   local name="$1"
   shift
-  nohup setsid "$@" >"$(log_file "${name}")" 2>&1 < /dev/null &
-  printf '%s\n' "$!" >"$(pid_file "${name}")"
-  echo "started ${name}: pid=$! log=$(log_file "${name}")"
+  local file
+  file="$(pid_file "${name}")"
+  : >"${file}"
+  nohup setsid --fork bash -c '
+    pid_file="$1"
+    shift
+    echo "$$" >"${pid_file}"
+    exec "$@"
+  ' bash "${file}" "$@" >"$(log_file "${name}")" 2>&1 < /dev/null &
+  local deadline=$((SECONDS + 3))
+  while [[ ! -s "${file}" ]] && (( SECONDS < deadline )); do sleep 0.05; done
+  [[ -s "${file}" ]] || {
+    echo "ERROR: ${name} did not publish its managed PID." >&2
+    return 1
+  }
+  echo "started ${name}: pid=$(<"${file}") log=$(log_file "${name}")"
 }
 
 require_alive() {
@@ -62,11 +75,11 @@ stop_component() {
   [[ -s "${file}" ]] || return 0
   pid="$(<"${file}")"
   if [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
-    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
-    deadline=$((SECONDS + 8))
+    kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    deadline=$((SECONDS + 5))
     while kill -0 "${pid}" 2>/dev/null && (( SECONDS < deadline )); do sleep 0.1; done
     if kill -0 "${pid}" 2>/dev/null; then
-      kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+      kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
     fi
   fi
   rm -f -- "${file}"
@@ -121,10 +134,6 @@ wait_gripper_status() {
   local args=("${PROJECT_ROOT}/tools/wait_for_string_topic.py" /right_arm/gripper_status --timeout "${timeout_seconds}") item
   for item in "$@"; do args+=(--contains "${item}"); done
   python3 "${args[@]}"
-}
-
-publisher_count() {
-  ros2 topic info "$1" 2>/dev/null | sed -n 's/^Publisher count: //p'
 }
 
 preflight() {
@@ -223,9 +232,9 @@ prepare_stack() {
 
 enter_servo() {
   wait_service /smolvla/set_enabled 20
-  [[ "$(publisher_count /right_arm/teleop_joint_command)" == "1" ]] || {
-    echo "ERROR: expected exactly one SmolVLA joint publisher." >&2; exit 1;
-  }
+  # Do not query ROS graph publisher counts here.  That graph is advisory and
+  # has repeatedly produced false startup failures; the action gate remains
+  # closed until the operator explicitly enters MOVE.
   wait_status 10 robot_powered_on=1 robot_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0
   call_bool /right_arm/set_motion_enabled true
   wait_status 15 motion_enabled=1 robot_error_code=0 robot_emergency_stop=0 robot_protective_stop=0

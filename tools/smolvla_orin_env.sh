@@ -27,6 +27,9 @@ export SMOLVLA_TMP_ROOT="${SMOLVLA_ORIN_ROOT}/tmp/smolvla"
 # drivers remain independently configured and verified at 30 FPS; lowering
 # this value does not change either camera stream or the recorded video FPS.
 export SMOLVLA_FPS="${SMOLVLA_FPS:-15}"
+# FP16 AMP reduces the policy forward-pass latency on Jetson Orin.  Set this
+# environment variable to fp32 for an explicit precision comparison.
+export SMOLVLA_INFERENCE_DTYPE="${SMOLVLA_INFERENCE_DTYPE:-fp16}"
 
 # The checkpoint produces 50 actions. Orin warm inference measured
 # Recent on-robot inference takes about 1.6-1.8 s.  Fifty actions cover 3.33 s
@@ -35,7 +38,7 @@ export SMOLVLA_FPS="${SMOLVLA_FPS:-15}"
 export SMOLVLA_ACTIONS_PER_CHUNK="${SMOLVLA_ACTIONS_PER_CHUNK:-50}"
 export SMOLVLA_CHUNK_SIZE_THRESHOLD="${SMOLVLA_CHUNK_SIZE_THRESHOLD:-1.0}"
 export SMOLVLA_VIDEO_BACKEND="${SMOLVLA_VIDEO_BACKEND:-pyav}"
-export SMOLVLA_STATE_TIMEOUT_SECONDS="${SMOLVLA_STATE_TIMEOUT_SECONDS:-1.0}"
+export SMOLVLA_STATE_TIMEOUT_SECONDS="${SMOLVLA_STATE_TIMEOUT_SECONDS:-1.5}"
 export SMOLVLA_CAMERA_TIMEOUT_SECONDS="${SMOLVLA_CAMERA_TIMEOUT_SECONDS:-1.0}"
 
 export LD_LIBRARY_PATH="${SMOLVLA_ORIN_CUSPARSELT}:/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"

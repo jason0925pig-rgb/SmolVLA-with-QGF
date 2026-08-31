@@ -45,8 +45,19 @@ alive_pid_file() {
 start_managed() {
   local pid_file="$1" log_file="$2"
   shift 2
-  nohup setsid "$@" >"${log_file}" 2>&1 < /dev/null &
-  printf '%s\n' "$!" >"${pid_file}"
+  : >"${pid_file}"
+  nohup setsid --fork bash -c '
+    pid_file="$1"
+    shift
+    echo "$$" >"${pid_file}"
+    exec "$@"
+  ' bash "${pid_file}" "$@" >"${log_file}" 2>&1 < /dev/null &
+  local deadline=$((SECONDS + 3))
+  while [[ ! -s "${pid_file}" ]] && (( SECONDS < deadline )); do sleep 0.05; done
+  [[ -s "${pid_file}" ]] || {
+    echo "ERROR: managed process did not publish its PID: $*" >&2
+    return 1
+  }
 }
 
 stop_managed() {
@@ -54,11 +65,11 @@ stop_managed() {
   [[ -s "${pid_file}" ]] || return 0
   pid="$(<"${pid_file}")"
   if [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
-    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
-    deadline=$((SECONDS + 8))
+    kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    deadline=$((SECONDS + 5))
     while kill -0 "${pid}" 2>/dev/null && (( SECONDS < deadline )); do sleep 0.1; done
     if kill -0 "${pid}" 2>/dev/null; then
-      kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+      kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
     fi
   fi
   rm -f -- "${pid_file}"
