@@ -21,11 +21,17 @@ def fields(value: str) -> dict[str, str]:
 
 
 class Monitor(Node):
-    def __init__(self):
+    def __init__(self, *, action_gate_confirmed: bool = False):
         super().__init__("qgf_rollout_monitor")
         self.smolvla: dict[str, str] = {}
         self.safety: dict[str, str] = {}
-        self.seen_enabled = False
+        # The launcher has already received a successful response from
+        # /smolvla/set_enabled before it starts this monitor.  In that normal
+        # path, a non-transient status publisher can publish action_enabled=1
+        # before this subscriber is discovered.  Treat the successful service
+        # call as the authoritative start confirmation, while continuing to
+        # use subsequent status messages to detect an unexpected gate close.
+        self.seen_enabled = action_gate_confirmed
         self.create_subscription(String, "/smolvla/status", self._smolvla_cb, 20)
         self.create_subscription(String, "/right_arm/safety_status", self._safety_cb, 20)
 
@@ -59,9 +65,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--startup-timeout", type=float, default=20.0)
     parser.add_argument("--timeout", type=float, default=0.0, help="Seconds; <=0 disables time-based termination.")
+    parser.add_argument(
+        "--action-gate-confirmed",
+        action="store_true",
+        help="The launcher already received success from /smolvla/set_enabled.",
+    )
     args = parser.parse_args()
     rclpy.init(args=None)
-    node = Monitor()
+    node = Monitor(action_gate_confirmed=args.action_gate_confirmed)
     start = time.monotonic()
     try:
         while rclpy.ok():

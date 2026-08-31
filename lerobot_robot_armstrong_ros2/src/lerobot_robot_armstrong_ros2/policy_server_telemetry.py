@@ -1,11 +1,13 @@
-"""LeRobot policy server that passively publishes pre-postprocessor chunks."""
+"""LeRobot policy server that publishes chunks with selectable AMP inference."""
 
+import os
 import threading
 from concurrent import futures
 
 import draccus
 import grpc
 import rclpy
+import torch
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -22,11 +24,38 @@ ACTION_NAMES = tuple(f"right_joint{i}" for i in range(1, 8)) + (
 )
 
 
+def _resolve_inference_dtype() -> torch.dtype | None:
+    """Map the attended inference setting to a CUDA autocast dtype."""
+    mode = os.environ.get("SMOLVLA_INFERENCE_DTYPE", "fp32").strip().lower()
+    dtypes = {
+        "fp32": None,
+        "float32": None,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+    }
+    if mode not in dtypes:
+        raise ValueError(
+            "SMOLVLA_INFERENCE_DTYPE must be fp32, fp16, or bf16; "
+            f"got {mode!r}."
+        )
+    return dtypes[mode]
+
+
 class TelemetryPolicyServer(PolicyServer):
     """Expose normalized flow-policy chunks without changing inference output."""
 
     def __init__(self, config: PolicyServerConfig):
         super().__init__(config)
+        self._inference_dtype = _resolve_inference_dtype()
+        if self._inference_dtype is not None and not torch.cuda.is_available():
+            raise RuntimeError("mixed-precision policy inference requires CUDA")
+        self.logger.info(
+            "POLICY_INFERENCE_PRECISION mode=%s autocast=%s",
+            os.environ.get("SMOLVLA_INFERENCE_DTYPE", "fp32").strip().lower(),
+            self._inference_dtype is not None,
+        )
         if not rclpy.ok():
             # Keep SIGINT/SIGTERM under the gRPC main process.  Otherwise
             # rclpy consumes the signal, shuts down only the ROS executor and
@@ -51,7 +80,13 @@ class TelemetryPolicyServer(PolicyServer):
         self._chunk_lock = threading.Lock()
 
     def _get_action_chunk(self, observation):
-        chunk = super()._get_action_chunk(observation)
+        if self._inference_dtype is None:
+            chunk = super()._get_action_chunk(observation)
+        else:
+            # Keep model weights and numerically sensitive operations safe while
+            # routing supported CUDA kernels through FP16/BF16 Tensor Cores.
+            with torch.autocast(device_type="cuda", dtype=self._inference_dtype):
+                chunk = super()._get_action_chunk(observation)
         with self._chunk_lock:
             self._normalized_chunk = chunk.detach().to("cpu").clone()
         return chunk

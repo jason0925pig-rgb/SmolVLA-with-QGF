@@ -20,6 +20,21 @@ QGF_TARGET="${QGF_QGF_EPISODE_COUNT:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
 COMPARISON_TAG="$(printf '%s' "${COMPARISON_TAG_B64}" | base64 --decode)"
+# The Windows task-profile launcher supplies the task as base64 so Chinese
+# text survives the SSH command line.  The ROS policy-client launcher reads
+# SMOLVLA_TASK (not SMOLVLA_TASK_B64), so export the decoded value before the
+# managed client process is created.  Without this, it silently falls back to
+# the old bottle task prompt.
+export SMOLVLA_TASK="${TASK}"
+# A task profile must select one exact bundle and checkpoint.  Do not inherit a
+# previous rollout's SMOLVLA_SERVER_MODEL_PATH: that can silently run a
+# different task model even though the terminal header prints the new task.
+EXPECTED_CHECKPOINT="${SMOLVLA_EXPECTED_CHECKPOINT:-${SMOLVLA_ORIN_BUNDLE}/checkpoint}"
+[[ -f "${EXPECTED_CHECKPOINT}/config.json" ]] || {
+  echo "ERROR: selected task checkpoint is incomplete: ${EXPECTED_CHECKPOINT}" >&2
+  exit 2
+}
+export SMOLVLA_SERVER_MODEL_PATH="${EXPECTED_CHECKPOINT}"
 RUNTIME_DIR="/tmp/one_arm_smolvla_${UID}"
 SERVER_PID_FILE="${RUNTIME_DIR}/policy_server.pid"
 CLIENT_PID_FILE="${RUNTIME_DIR}/policy_client.pid"
@@ -55,9 +70,24 @@ alive_pid_file() {
 start_managed() {
   local pid_file="$1" log_file="$2"
   shift 2
-  nohup setsid "$@" >"${log_file}" 2>&1 < /dev/null &
-  printf '%s
-' "$!" >"${pid_file}"
+  : >"${pid_file}"
+  # GNU setsid can fork when it is invoked from a background job.  Recording
+  # the short-lived parent PID leaves orphan policy/client processes behind,
+  # which then occupy port 8080 and retain the preceding task model.  Let the
+  # new-session child record its own PID before exec so stop_managed always
+  # addresses the real process group.
+  nohup setsid --fork bash -c '
+    pid_file="$1"
+    shift
+    echo "$$" >"${pid_file}"
+    exec "$@"
+  ' bash "${pid_file}" "$@" >"${log_file}" 2>&1 < /dev/null &
+  local deadline=$((SECONDS + 3))
+  while [[ ! -s "${pid_file}" ]] && (( SECONDS < deadline )); do sleep 0.05; done
+  [[ -s "${pid_file}" ]] || {
+    echo "ERROR: managed process did not publish its PID: $*" >&2
+    return 1
+  }
 }
 
 stop_managed() {
@@ -65,12 +95,54 @@ stop_managed() {
   [[ -s "${file}" ]] || return 0
   pid="$(<"${file}")"
   if [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
-    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
-    deadline=$((SECONDS + 8))
-    while kill -0 "${pid}" 2>/dev/null && (( SECONDS < deadline )); do sleep 0.1; done
     kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    deadline=$((SECONDS + 5))
+    while kill -0 "${pid}" 2>/dev/null && (( SECONDS < deadline )); do sleep 0.1; done
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+    fi
   fi
   rm -f -- "${file}"
+}
+
+cleanup_orphaned_policy_processes() {
+  local pid pgid deadline any_alive
+  local -a stale_pids=()
+  mapfile -t stale_pids < <(pgrep -u "${UID}" -f \
+    '[l]erobot_robot_armstrong_ros2\.policy_server_(telemetry|qgf)|[l]erobot\.async_inference\.policy_server|[l]erobot_robot_armstrong_ros2\.async_client' \
+    2>/dev/null || true)
+  ((${#stale_pids[@]} > 0)) || return 0
+
+  echo "WARNING: clearing ${#stale_pids[@]} orphaned SmolVLA policy process(es) from an earlier session." >&2
+  for pid in "${stale_pids[@]}"; do
+    [[ "${pid}" =~ ^[0-9]+$ ]] || continue
+    pgid="$(ps -o pgid= -p "${pid}" 2>/dev/null | tr -d '[:space:]')"
+    if [[ "${pgid}" =~ ^[0-9]+$ ]]; then
+      kill -TERM -- "-${pgid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    else
+      kill -TERM "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  deadline=$((SECONDS + 5))
+  while (( SECONDS < deadline )); do
+    any_alive=0
+    for pid in "${stale_pids[@]}"; do kill -0 "${pid}" 2>/dev/null && any_alive=1; done
+    (( any_alive == 0 )) && break
+    sleep 0.1
+  done
+  for pid in "${stale_pids[@]}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      pgid="$(ps -o pgid= -p "${pid}" 2>/dev/null | tr -d '[:space:]')"
+      if [[ "${pgid}" =~ ^[0-9]+$ ]]; then
+        kill -KILL -- "-${pgid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+      else
+        kill -KILL "${pid}" 2>/dev/null || true
+      fi
+    fi
+  done
+  rm -f -- "${SERVER_PID_FILE}" "${CLIENT_PID_FILE}"
+  echo "STALE_SMOLVLA_POLICY_PROCESSES_CLEARED count=${#stale_pids[@]}"
 }
 
 stop_recorder() {
@@ -122,6 +194,7 @@ cleanup() {
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" stop || true
   stop_managed "${CLIENT_PID_FILE}"
   stop_managed "${SERVER_PID_FILE}"
+  cleanup_orphaned_policy_processes
   echo "QGF_SESSION_STOPPED_POLICY_SERVO_ENABLE_AND_POWER_OFF"
   (( delete_error == 0 )) || code=40
   exit "${code}"
@@ -270,6 +343,7 @@ if alive_pid_file "${SERVER_PID_FILE}" || alive_pid_file "${CLIENT_PID_FILE}"; t
   echo "ERROR: another SmolVLA launcher is already running." >&2
   exit 3
 fi
+cleanup_orphaned_policy_processes
 
 is_positive_integer() {
   [[ "$1" =~ ^[1-9][0-9]*$ ]]
@@ -307,19 +381,39 @@ PY
 start_policy_server() {
   : >"${SERVER_LOG}"
   start_managed "${SERVER_PID_FILE}" "${SERVER_LOG}" \
-    "${PROJECT_ROOT}/tools/start_smolvla_orin_policy_server.sh"
+    env "SMOLVLA_ORIN_BUNDLE=${SMOLVLA_ORIN_BUNDLE}" \
+      "SMOLVLA_SERVER_MODEL_PATH=${SMOLVLA_SERVER_MODEL_PATH}" \
+      "${PROJECT_ROOT}/tools/start_smolvla_orin_policy_server.sh"
   wait_for_server
+  # Orphaned listeners are cleared before launch.  Therefore the listener that
+  # just passed wait_for_server belongs to this invocation; a launcher-PID
+  # kill -0 check is not a reliable readiness test across setsid/Python handoff.
+  echo "SMOLVLA_POLICY_SERVER_READY endpoint=${SMOLVLA_SERVER_HOST}:${SMOLVLA_SERVER_PORT} checkpoint=${SMOLVLA_SERVER_MODEL_PATH}"
 }
 
 start_policy_client() {
   : >"${CLIENT_LOG}"
   start_managed "${CLIENT_PID_FILE}" "${CLIENT_LOG}" \
-    "${PROJECT_ROOT}/tools/start_smolvla_orin_ros_client.sh"
+    env "SMOLVLA_ORIN_BUNDLE=${SMOLVLA_ORIN_BUNDLE}" \
+      "SMOLVLA_SERVER_MODEL_PATH=${SMOLVLA_SERVER_MODEL_PATH}" \
+      "SMOLVLA_TASK=${TASK}" \
+      "${PROJECT_ROOT}/tools/start_smolvla_orin_ros_client.sh"
   sleep 2
   alive_pid_file "${CLIENT_PID_FILE}" || {
     tail -n 100 "${CLIENT_LOG}" >&2 || true; return 1;
   }
   wait_observation_and_chunk
+  grep -Fq "pretrained_name_or_path': '${SMOLVLA_SERVER_MODEL_PATH}'" "${CLIENT_LOG}" || {
+    echo "ERROR: policy client checkpoint identity mismatch; expected ${SMOLVLA_SERVER_MODEL_PATH}." >&2
+    tail -n 120 "${CLIENT_LOG}" >&2 || true
+    return 1
+  }
+  grep -Fq "'task': '${TASK}'" "${CLIENT_LOG}" || {
+    echo "ERROR: policy client task identity mismatch; expected ${TASK}." >&2
+    tail -n 120 "${CLIENT_LOG}" >&2 || true
+    return 1
+  }
+  echo "SMOLVLA_POLICY_IDENTITY_OK checkpoint=${SMOLVLA_SERVER_MODEL_PATH} task=${TASK}"
 }
 
 stop_policy_components() {
@@ -414,7 +508,7 @@ while true; do
   "${PROJECT_ROOT}/tools/ubuntu_smolvla_stack.sh" enable-policy
   monitor_log="${CURRENT_STAGING}/monitor.log"
   python3 "${PROJECT_ROOT}/tools/monitor_qgf_rollout.py" \
-    --startup-timeout 20 --timeout "${ROLLOUT_TIMEOUT_SECONDS}" >"${monitor_log}" 2>&1 &
+    --action-gate-confirmed --timeout "${ROLLOUT_TIMEOUT_SECONDS}" >"${monitor_log}" 2>&1 &
   MONITOR_PID=$!
   termination_source=""
   monitor_code=0
