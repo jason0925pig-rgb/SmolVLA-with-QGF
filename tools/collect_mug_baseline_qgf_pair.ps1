@@ -15,7 +15,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$task = "把水杯放到紫色的箱子上"
+# Keep source ASCII-only so Windows PowerShell 5.1 cannot misdecode the task
+# string when the launcher is checked out without a UTF-8 BOM.
+$task = [System.Text.Encoding]::UTF8.GetString(
+    [Convert]::FromBase64String("5oqK5rC05p2v5pS+5Yiw57Sr6Imy55qE566x5a2Q5LiK")
+)
 $datasetRoot = "/home/nvidia/work/telop/mug_purple_box_real_rollouts"
 $bundle = "/home/nvidia/work/telop/models/smolvla_20260827_mug_purple_box"
 $critic = "/home/nvidia/work/telop/models/qgf/mug_purple_box_single_q_45_5_20260829/critic_member_00.pt"
@@ -54,7 +58,8 @@ $coefficient = (1.0 / $Beta).ToString($culture)
 $remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
 $remoteCommand = @"
 cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_DATASET_ROOT='$datasetRoot' QGF_BETA='$betaText' SMOLVLA_QGF_CRITIC_PATH='$critic' SMOLVLA_ORIN_BUNDLE='$bundle' SMOLVLA_SERVER_MODEL_PATH='$bundle/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$bundle/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='0.15' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='0.85' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='5' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='false' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='0.3490658503988659' && ./tools/run_qgf_collection_session.sh
-"@.Trim()
+"@
+$remoteCommand = $remoteCommand.Trim()
 
 Write-Host "============================================================"
 Write-Host "Interactive paired Mug-to-Purple-Box Baseline/QGF collection"
