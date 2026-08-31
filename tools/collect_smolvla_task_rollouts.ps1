@@ -5,6 +5,8 @@
     [ValidateSet("baseline", "qgf")]
     [string]$Mode = "baseline",
     [double]$Beta = 0.0,
+    [ValidateSet("normal", "light", "distractor")]
+    [string]$Condition = "normal",
     [string]$Notes = "",
     [string]$SshTarget = "armstrong-orin",
     [double]$GripperOpenThreshold = 0.15,
@@ -63,9 +65,10 @@ $qCriticPath = if ($profile.ContainsKey("QCriticPath")) { $profile.QCriticPath }
 if ($Mode -eq "qgf" -and [string]::IsNullOrWhiteSpace($qCriticPath)) {
     throw "Task profile '$TaskProfile' has no task-matched Q critic. QGF mode is currently available only for mug."
 }
-$runNotes = "$Notes; task_profile=$TaskProfile; policy_mode=$Mode; qgf_beta=$betaText; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames"
+$comparisonTag = "${TaskProfile}_${Condition}"
+$runNotes = "$Notes; condition=$Condition; comparison_cohort=$comparisonTag; task_profile=$TaskProfile; policy_mode=$Mode; qgf_beta=$betaText; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames"
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($runNotes))
-$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($TaskProfile))
+$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
 $canonicalizePolicyObservation = if ($profile.ContainsKey("CanonicalizePolicyObservation")) {
     $profile.CanonicalizePolicyObservation
 } else {
@@ -90,6 +93,7 @@ Write-Host "SmolVLA task rollout: $TaskProfile"
 Write-Host "Task: $($profile.Task)"
 Write-Host "Checkpoint bundle: $($profile.Bundle)"
 Write-Host "Dataset root: $($profile.DatasetRoot)"
+Write-Host "Experiment condition: $Condition (comparison cohort: $comparisonTag)"
 Write-Host "Gripper filter: open<=$openText, close>=$closeText, confirmation=$GripperConfirmationFrames frames"
 Write-Host "Policy joint observation coordinates: $(if ($canonicalizePolicyObservation -eq 'true') { 'canonical' } else { 'raw' })"
 Write-Host "Initial pose tolerance: $initialPoseToleranceRad rad (20 degrees for mug/stapler)"
