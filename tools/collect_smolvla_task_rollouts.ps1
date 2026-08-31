@@ -5,7 +5,7 @@
     [ValidateSet("baseline", "qgf")]
     [string]$Mode = "baseline",
     [double]$Beta = 0.0,
-    [ValidateSet("normal", "light", "distractor")]
+    [ValidateSet("normal", "medium_light", "light", "distractor")]
     [string]$Condition = "normal",
     [string]$Notes = "",
     [string]$SshTarget = "armstrong-orin",

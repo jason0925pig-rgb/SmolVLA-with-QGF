@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("normal", "light", "distractor")]
+    [ValidateSet("normal", "medium_light", "light", "distractor")]
     [string]$Condition = "normal",
     [ValidateRange(1, 100000)]
     [int]$BaselineEpisodeCount = 1,
@@ -26,6 +26,7 @@ $critic = "/home/nvidia/work/telop/models/qgf/mug_purple_box_single_q_45_5_20260
 $comparisonTag = "mug_$Condition"
 $conditionNote = @{
     normal = "normal"
+    medium_light = "lighting=medium"
     light = "lighting_perturbation"
     distractor = "distractor_perturbation"
 }[$Condition]
