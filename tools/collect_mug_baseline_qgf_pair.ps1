@@ -5,6 +5,10 @@ param(
     [int]$BaselineEpisodeCount = 1,
     [ValidateRange(1, 100000)]
     [int]$QgfEpisodeCount = 1,
+    [ValidateRange(0, 100000)]
+    [int]$ExistingBaselineCount = 0,
+    [ValidateRange(0, 100000)]
+    [int]$ExistingQgfCount = 0,
     [ValidateSet("ask", "baseline", "qgf")]
     [string]$InitialMode = "ask",
     [ValidateRange(0.000001, 1000000.0)]
@@ -23,7 +27,7 @@ $task = [System.Text.Encoding]::UTF8.GetString(
 $datasetRoot = "/home/nvidia/work/telop/mug_purple_box_real_rollouts"
 $bundle = "/home/nvidia/work/telop/models/smolvla_20260827_mug_purple_box"
 $critic = "/home/nvidia/work/telop/models/qgf/mug_purple_box_single_q_45_5_20260829/critic_member_00.pt"
-$comparisonTag = "mug_$Condition"
+$comparisonTag = if ($Condition -eq "medium_light") { "lighting=medium" } else { "comparison_cohort=mug_$Condition" }
 $conditionNote = @{
     normal = "normal"
     medium_light = "lighting=medium"
@@ -53,12 +57,12 @@ $resolvedInitialMode = Resolve-InitialMode
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $taskBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($task))
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($notesForRun))
-$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("comparison_cohort=$comparisonTag"))
+$comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
 $betaText = $Beta.ToString($culture)
 $coefficient = (1.0 / $Beta).ToString($culture)
 $remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
 $remoteCommand = @"
-cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_DATASET_ROOT='$datasetRoot' QGF_BETA='$betaText' SMOLVLA_QGF_CRITIC_PATH='$critic' SMOLVLA_ORIN_BUNDLE='$bundle' SMOLVLA_SERVER_MODEL_PATH='$bundle/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$bundle/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='0.15' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='0.85' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='5' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='false' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='0.3490658503988659' && ./tools/run_qgf_collection_session.sh
+cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_INITIAL_SAVED_BASELINE='$ExistingBaselineCount' QGF_INITIAL_SAVED_QGF='$ExistingQgfCount' QGF_DATASET_ROOT='$datasetRoot' QGF_BETA='$betaText' SMOLVLA_QGF_CRITIC_PATH='$critic' SMOLVLA_ORIN_BUNDLE='$bundle' SMOLVLA_SERVER_MODEL_PATH='$bundle/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$bundle/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='0.15' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='0.85' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='5' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='false' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='0.3490658503988659' && ./tools/run_qgf_collection_session.sh
 "@
 $remoteCommand = $remoteCommand.Trim()
 
@@ -66,6 +70,7 @@ Write-Host "============================================================"
 Write-Host "Interactive paired Mug-to-Purple-Box Baseline/QGF collection"
 Write-Host "Condition: $Condition (isolated comparison cohort: $comparisonTag)"
 Write-Host "Baseline target: $BaselineEpisodeCount; QGF target: $QgfEpisodeCount"
+Write-Host "Previously saved in this cohort: baseline=$ExistingBaselineCount; QGF=$ExistingQgfCount"
 Write-Host "First policy: $resolvedInitialMode"
 Write-Host "QGF beta=$Beta; actual Q coefficient=1/beta=$coefficient"
 Write-Host "Notes: $notesForRun"

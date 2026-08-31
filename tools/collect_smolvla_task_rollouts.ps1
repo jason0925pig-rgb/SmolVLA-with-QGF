@@ -65,8 +65,9 @@ $qCriticPath = if ($profile.ContainsKey("QCriticPath")) { $profile.QCriticPath }
 if ($Mode -eq "qgf" -and [string]::IsNullOrWhiteSpace($qCriticPath)) {
     throw "Task profile '$TaskProfile' has no task-matched Q critic. QGF mode is currently available only for mug."
 }
-$comparisonTag = "${TaskProfile}_${Condition}"
-$runNotes = "$Notes; condition=$Condition; comparison_cohort=$comparisonTag; task_profile=$TaskProfile; policy_mode=$Mode; qgf_beta=$betaText; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames"
+$comparisonTag = if ($TaskProfile -eq "mug" -and $Condition -eq "medium_light") { "lighting=medium" } else { "${TaskProfile}_${Condition}" }
+$conditionMetadata = if ($TaskProfile -eq "mug" -and $Condition -eq "medium_light") { "lighting=medium" } else { "condition=$Condition" }
+$runNotes = "$Notes; $conditionMetadata; comparison_cohort=$comparisonTag; task_profile=$TaskProfile; policy_mode=$Mode; qgf_beta=$betaText; gripper_open_threshold=$openText; gripper_close_threshold=$closeText; gripper_confirmation_frames=$GripperConfirmationFrames"
 $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($runNotes))
 $comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
 $canonicalizePolicyObservation = if ($profile.ContainsKey("CanonicalizePolicyObservation")) {

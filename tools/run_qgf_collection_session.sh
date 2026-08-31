@@ -17,6 +17,8 @@ INITIAL_MODE="${QGF_INITIAL_MODE:-${RUN_MODE}}"
 QGF_BETA="${QGF_BETA:-0}"
 BASELINE_TARGET="${QGF_BASELINE_EPISODE_COUNT:-0}"
 QGF_TARGET="${QGF_QGF_EPISODE_COUNT:-0}"
+INITIAL_SAVED_BASELINE="${QGF_INITIAL_SAVED_BASELINE:-0}"
+INITIAL_SAVED_QGF="${QGF_INITIAL_SAVED_QGF:-0}"
 TASK="$(printf '%s' "${TASK_B64}" | base64 --decode)"
 NOTES="$(printf '%s' "${NOTES_B64}" | base64 --decode)"
 COMPARISON_TAG="$(printf '%s' "${COMPARISON_TAG_B64}" | base64 --decode)"
@@ -45,8 +47,8 @@ MONITOR_PID=""
 CURRENT_STAGING=""
 STOPPING=0
 SAVED=0
-SAVED_BASELINE=0
-SAVED_QGF=0
+SAVED_BASELINE="${INITIAL_SAVED_BASELINE}"
+SAVED_QGF="${INITIAL_SAVED_QGF}"
 ATTEMPT=0
 PAIRED_MODE=0
 CURRENT_MODE="${RUN_MODE}"
@@ -349,6 +351,10 @@ is_positive_integer() {
   [[ "$1" =~ ^[1-9][0-9]*$ ]]
 }
 
+is_nonnegative_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
 configure_policy_mode() {
   local mode="$1"
   case "${mode}" in
@@ -443,6 +449,12 @@ case "${RUN_MODE}" in
     }
     is_positive_integer "${QGF_TARGET}" || {
       echo "ERROR: QGF_QGF_EPISODE_COUNT must be a positive integer in paired mode." >&2; exit 2;
+    }
+    is_nonnegative_integer "${SAVED_BASELINE}" && (( SAVED_BASELINE <= BASELINE_TARGET )) || {
+      echo "ERROR: QGF_INITIAL_SAVED_BASELINE must be an integer between 0 and the baseline target." >&2; exit 2;
+    }
+    is_nonnegative_integer "${SAVED_QGF}" && (( SAVED_QGF <= QGF_TARGET )) || {
+      echo "ERROR: QGF_INITIAL_SAVED_QGF must be an integer between 0 and the QGF target." >&2; exit 2;
     }
     case "${INITIAL_MODE}" in baseline|qgf) CURRENT_MODE="${INITIAL_MODE}" ;; *)
       echo "ERROR: QGF_INITIAL_MODE must be baseline or qgf in paired mode." >&2; exit 2;; esac
