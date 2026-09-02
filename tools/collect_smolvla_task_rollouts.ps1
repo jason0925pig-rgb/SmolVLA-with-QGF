@@ -42,6 +42,7 @@ $profiles = @{
         Task = "把订书机放进快递纸盒"
         Bundle = "/home/nvidia/work/telop/models/smolvla_20260827_stapler_into_box"
         DatasetRoot = "/home/nvidia/work/telop/stapler_real_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf/stapler_into_box_single_q_45_5_20260830/critic_member_00.pt"
         CanonicalizePolicyObservation = "false"
         InitialPoseToleranceRad = "0.3490658503988659"
     }
