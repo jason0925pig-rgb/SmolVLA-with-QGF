@@ -225,7 +225,7 @@ fi
 
 # ---------- 3b. destination file count + total bytes (handoff section 6) ----------
 DST_FILES=$(ssh -o BatchMode=yes "$DEST_HOST" "cd '$DEST/raw_episodes' && find . -type f | wc -l" | tr -dc '0-9')
-DST_BYTES=$(ssh -o BatchMode=yes "$DEST_HOST" "cd '$DEST/raw_episodes' && find . -type f -printf '%s\n' | awk '{s+=\$1} END{print s+0}'" | tr -dc '0-9')
+DST_BYTES=$(ssh -o BatchMode=yes "$DEST_HOST" "cd '$DEST/raw_episodes' && find . -type f -printf '%s\n' | awk -v OFMT=%.0f -v CONVFMT=%.0f '{s+=\$1} END{print s+0}'" | tr -dc '0-9')
 echo "destination: $DST_FILES files, $DST_BYTES bytes (source: $NFILES files, $TOTAL bytes)"
 if [ "$DST_FILES" != "$NFILES" ] || [ "$DST_BYTES" != "$TOTAL" ]; then
   say "VERIFY_FAIL count/bytes src=$NFILES/$TOTAL dst=$DST_FILES/$DST_BYTES"
@@ -266,9 +266,9 @@ scp -q -o BatchMode=yes "$SRCSUM" "$DEST_HOST:$DEST/source_SHA256SUMS"
 if [ $DO_BUNDLE -eq 1 ]; then
   echo "=== verifying the copied SmolVLA bundle ==="
   B_SFILES=$(find "$BUNDLE_SRC" -type f | wc -l | tr -dc '0-9')
-  B_SBYTES=$(find "$BUNDLE_SRC" -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}' | tr -dc '0-9')
+  B_SBYTES=$(find "$BUNDLE_SRC" -type f -printf '%s\n' | awk -v OFMT=%.0f -v CONVFMT=%.0f '{s+=$1} END{print s+0}' | tr -dc '0-9')
   B_DFILES=$(ssh -o BatchMode=yes "$DEST_HOST" "find '$BUNDLE_DEST' -type f | wc -l" | tr -dc '0-9')
-  B_DBYTES=$(ssh -o BatchMode=yes "$DEST_HOST" "find '$BUNDLE_DEST' -type f -printf '%s\n' | awk '{s+=\$1} END{print s+0}'" | tr -dc '0-9')
+  B_DBYTES=$(ssh -o BatchMode=yes "$DEST_HOST" "find '$BUNDLE_DEST' -type f -printf '%s\n' | awk -v OFMT=%.0f -v CONVFMT=%.0f '{s+=\$1} END{print s+0}'" | tr -dc '0-9')
   echo "bundle src: $B_SFILES files / $B_SBYTES B   dest: $B_DFILES files / $B_DBYTES B"
   if [ "$B_SFILES" != "$B_DFILES" ] || [ "$B_SBYTES" != "$B_DBYTES" ]; then
     say "BUNDLE_VERIFY_FAIL src=$B_SFILES/$B_SBYTES dst=$B_DFILES/$B_DBYTES"
