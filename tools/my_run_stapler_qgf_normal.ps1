@@ -53,11 +53,20 @@ if ($Beta -ne 0.5) {
     Write-Host ""
 }
 
-# The upstream script requires BaselineEpisodeCount >= 1.  For a QGF-only
-# session, pass 1 and simply never choose B at the round prompt; finish with X.
+# For a QGF-only session the remote session script still needs a baseline
+# target, and it enforces  QGF_INITIAL_SAVED_BASELINE <= QGF_BASELINE_EPISODE_COUNT.
+# So set the target EQUAL to what is already on disk: the baseline arm then reads
+# as already complete (50/50), the round loop keeps going until the QGF target is
+# met, and choosing B by mistake is refused with "Baseline target is already
+# complete."  Passing 1 here instead fails validation whenever ExistingBaselineCount > 1.
 $qgfOnly = $BaselineEpisodeCount -le 0
-$baselineArg = if ($qgfOnly) { 1 } else { $BaselineEpisodeCount }
+$baselineArg = if ($qgfOnly) { [math]::Max(1, $ExistingBaselineCount) } else { $BaselineEpisodeCount }
 $initialMode = if ($qgfOnly) { "qgf" } else { "ask" }
+
+if ($qgfOnly -and $ExistingBaselineCount -lt 1) {
+    Write-Host "  NOTE: no existing baseline recorded, so the baseline arm shows 0/1." -ForegroundColor Yellow
+    Write-Host "        The session will not stop on its own - press X after the last QGF episode." -ForegroundColor Yellow
+}
 
 Write-Host "============================================================"
 Write-Host "Stapler / normal lighting  -  QGF arm"
@@ -67,7 +76,7 @@ Write-Host "  beta                 : $Beta   (Q coefficient = 1/beta = $([math]:
 Write-Host "  QGF episodes         : $QgfEpisodeCount"
 if ($qgfOnly) {
     Write-Host "  baseline episodes    : 0  (QGF only)" -ForegroundColor Cyan
-    Write-Host "                         at the round prompt always choose Q, finish with X"
+    Write-Host "                         baseline arm pinned complete at $([math]::Max(1,$ExistingBaselineCount))/$([math]::Max(1,$ExistingBaselineCount)); choose Q every round"
     Write-Host ""
     Write-Host "  NOTE: comparing against the 50 baseline episodes from 2026-08-30." -ForegroundColor Yellow
     Write-Host "        That is a cross-day, unpaired comparison.  Running paired" -ForegroundColor Yellow
