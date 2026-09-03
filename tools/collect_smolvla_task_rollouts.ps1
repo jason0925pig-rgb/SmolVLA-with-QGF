@@ -29,6 +29,7 @@ $profiles = @{
         Task = "把箱子里的红色包裹拿出来放到桌子上。"
         Bundle = "/home/nvidia/work/telop/models/smolvla_20260828_red_parcel_clean"
         DatasetRoot = "/home/nvidia/work/telop/red_parcel_real_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf/red_parcel_single_q_45_5_20260902/critic_member_00.pt"
         # The clean checkpoint was trained on the controller's raw negative-J5
         # representation. Safety checks still canonicalize wraparound joints
         # internally; only the observation sent to the policy stays raw.
