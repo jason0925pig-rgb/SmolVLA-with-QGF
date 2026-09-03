@@ -109,12 +109,6 @@ if ($task.Length -ne 18 -or $taskSha256 -ne "8ccd69472e895f31fb374da5956d42cdfcb
 $datasetRoot = "/home/nvidia/work/telop/red_parcel_real_rollouts"
 $bundle = "/home/nvidia/work/telop/models/smolvla_20260828_red_parcel_clean"
 $critic = "/home/nvidia/work/telop/models/qgf/red_parcel_single_q_45_5_20260902/critic_member_00.pt"
-# The red_parcel profile in collect_smolvla_task_rollouts.ps1 deliberately widens
-# the joint-2 target-error guard to 0.75 rad.  The defaults below it are 0.50
-# (configuration_armstrong_ros2.py) and 0.25 (smolvla_guard.py), and a real
-# session has already tripped this guard at 0.5830 rad, so omitting this export
-# would abort episodes mid-cohort.  It is NOT optional for this task.
-$joint2MaxTargetErrorRad = "0.75"
 $canonicalizePolicyObservation = "false"
 $initialPoseToleranceRad = "0.0872664625997165"
 $joint2MaxTargetErrorRad = "0.75"
@@ -187,7 +181,7 @@ $notesBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($
 $comparisonTagBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($comparisonTag))
 $remoteProject = "/home/nvidia/work/telop/SmolVLA-with-QGF"
 $remoteCommand = @"
-cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_INITIAL_SAVED_BASELINE='$ExistingBaselineCount' QGF_INITIAL_SAVED_QGF='$ExistingQgfCount' QGF_DATASET_ROOT='$datasetRoot' QGF_BETA='$betaText' SMOLVLA_QGF_CRITIC_PATH='$critic' SMOLVLA_ORIN_BUNDLE='$bundle' SMOLVLA_SERVER_MODEL_PATH='$bundle/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$bundle/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='0.15' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='0.85' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='5' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='$canonicalizePolicyObservation' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='$initialPoseToleranceRad' SMOLVLA_JOINT2_MAX_TARGET_ERROR_RAD='$joint2MaxTargetErrorRad' SMOLVLA_JOINT2_MAX_TARGET_ERROR_RAD='$joint2MaxTargetErrorRad' && ./tools/run_qgf_collection_session.sh
+cd '$remoteProject' && export SMOLVLA_TASK_B64='$taskBase64' QGF_NOTES_B64='$notesBase64' QGF_COMPARISON_TAG_B64='$comparisonTagBase64' QGF_RUN_MODE='paired' QGF_INITIAL_MODE='$resolvedInitialMode' QGF_BASELINE_EPISODE_COUNT='$BaselineEpisodeCount' QGF_QGF_EPISODE_COUNT='$QgfEpisodeCount' QGF_INITIAL_SAVED_BASELINE='$ExistingBaselineCount' QGF_INITIAL_SAVED_QGF='$ExistingQgfCount' QGF_DATASET_ROOT='$datasetRoot' QGF_BETA='$betaText' SMOLVLA_QGF_CRITIC_PATH='$critic' SMOLVLA_ORIN_BUNDLE='$bundle' SMOLVLA_SERVER_MODEL_PATH='$bundle/checkpoint' SMOLVLA_EXPECTED_CHECKPOINT='$bundle/checkpoint' SMOLVLA_GRIPPER_OPEN_THRESHOLD='0.15' SMOLVLA_GRIPPER_CLOSE_THRESHOLD='0.85' SMOLVLA_GRIPPER_CONFIRMATION_FRAMES='5' SMOLVLA_CANONICALIZE_POLICY_OBSERVATION='$canonicalizePolicyObservation' SMOLVLA_INITIAL_POSE_TOLERANCE_RAD='$initialPoseToleranceRad' SMOLVLA_JOINT2_MAX_TARGET_ERROR_RAD='$joint2MaxTargetErrorRad' && ./tools/run_qgf_collection_session.sh
 "@
 $remoteCommand = $remoteCommand.Trim()
 
