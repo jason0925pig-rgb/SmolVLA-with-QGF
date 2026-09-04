@@ -202,3 +202,56 @@ export SMOLVLA_ORIN_BUNDLE=/home/nvidia/work/telop/models/smolvla_20260828_red_p
 | 光照 | 混(30 normal + 20 medium) | — | 混(30 normal + 10 medium + 10 dark) |
 
 GPU 不同不影响结果可比性(同模型、同超参、同随机种子 20260814),但记录在此以免日后混淆。
+
+---
+
+## 附录:2026-09-04 验收复核与 acceptance.log 的更正
+
+复核本报告时发现 `runs/red_parcel_single_q_45_5_20260902/logs/acceptance.log`
+的结尾是:
+
+```
+FAILED 2 check(s):
+  - CUDA_VISIBLE_DEVICES == 1 so that 'cuda' is physical GPU 1 (got '0')
+  - the visible CUDA device IS physical GPU 1
+    (torch GPU-b67f7d5d-... vs nvidia-smi GPU-12ffc92d-...)
+```
+
+这与正文「第 12 节七组验收全部通过」表面矛盾,必须说清楚,否则日后审计会误判本次训练用错了卡。
+
+**这两项 FAIL 反映的是验收脚本自身进程的环境,不是训练时的环境。** 该检查读的是
+"当前 python 进程可见的 CUDA 设备",而那次验收启动时没有带 `CUDA_VISIBLE_DEVICES=1`,
+于是它看到 GPU 0 并如实报告与 `nvidia-smi` 的物理 GPU 1 不符。
+
+训练本身用的是物理 GPU 1,证据独立于任何环境变量 ——
+`environment/nvidia_smi_train_during.txt` 直接记录了训练期间的进程归属:
+
+```
+|  1  N/A  N/A  27202  C  .../envs/visual_iql_py310/bin/python  812MiB |
+1, GPU-12ffc92d-b926-e552-c165-1dc890071859, 818 MiB, 62 %
+0, GPU-b67f7d5d-45bd-3f94-8cba-0e0d90daf168,   0 MiB,  0 %
+```
+
+训练进程 PID 27202 在物理 GPU 1 上占 812 MiB、利用率 62%,GPU 0 全程 0 MiB / 0%。
+
+2026-09-04 以正确环境重跑验收:
+
+```bash
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+  python tools/qgf_4090_staging/accept_single_q_task.py
+```
+
+结果:
+
+```
+ALL HARD CHECKS PASSED  (task=red_parcel run=red_parcel_single_q_45_5_20260902)
+```
+
+新日志保存在 `logs/acceptance_gpu1_pinned.log`,与原 `acceptance.log` 并存,
+两份都不删除。中间还有一次只补了 `CUDA_VISIBLE_DEVICES=1` 的运行
+(`logs/acceptance_gpu1.log`),它把 FAIL 从 2 项降到 1 项,剩下的是
+`CUDA_DEVICE_ORDER == PCI_BUS_ID (got None)` —— 说明脚本要求两个变量同时钉住
+才认为物理卡序号被锁定。
+
+**教训**:验收脚本必须和训练用同一套 GPU 环境变量启动,否则它检查的是自己而不是被检查对象。
+后续任务运行 `accept_single_q_task.py` 时请一并导出 `CUDA_DEVICE_ORDER=PCI_BUS_ID`。
