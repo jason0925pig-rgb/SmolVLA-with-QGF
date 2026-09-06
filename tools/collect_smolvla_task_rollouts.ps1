@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("red_parcel", "stapler", "mug")]
+    [ValidateSet("red_parcel", "stapler", "mug", "screwdriver")]
     [string]$TaskProfile,
     [int]$EpisodeCount = 1,
     [ValidateSet("baseline", "qgf")]
@@ -53,6 +53,17 @@ $profiles = @{
         QCriticPath = "/home/nvidia/work/telop/models/qgf/mug_purple_box_single_q_45_5_20260829/critic_member_00.pt"
         CanonicalizePolicyObservation = "false"
         InitialPoseToleranceRad = "0.3490658503988659"
+    }
+    screwdriver = @{
+        Task = "把杯子里的螺丝刀放进纸盒里"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260904_screwdriver_into_box"
+        DatasetRoot = "/home/nvidia/work/telop/screwdriver_real_rollouts"
+        # All 50 demonstrations use the controller's negative-J5 branch.
+        # Keep this raw coordinate convention at policy input, as in training.
+        CanonicalizePolicyObservation = "false"
+        InitialPoseToleranceRad = "0.3490658503988659"
+        Joint2MaxTargetErrorRad = "0.75"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf/screwdriver_into_box_single_q_45_5_20260906/critic_member_00.pt"
     }
 }
 
