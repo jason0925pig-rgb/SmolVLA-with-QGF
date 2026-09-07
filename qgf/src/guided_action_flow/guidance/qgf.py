@@ -3,12 +3,41 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+GUIDANCE_MODES = ("critic", "random_matched_norm", "zero")
+
+
 @dataclass(frozen=True)
 class QGuidanceConfig:
     beta: float = 10.0
     grad_clip_norm: float | None = 1.0
     uncertainty_scale: float = 0.0
     min_gate: float = 0.0
+    # Ablation switch. Everything else - the critic forward, the backward, the
+    # clip, the gate, the 1/beta scaling, the RTC hook and therefore the timing
+    # and the RNG consumption - is identical across the three modes.
+    guidance_mode: str = "critic"
+    # Seed for the random direction, drawn from a dedicated generator so that
+    # SmolVLA's own flow-noise sampling from the global RNG is untouched.
+    random_seed: int | None = None
+
+
+_RANDOM_GENERATORS: dict = {}
+
+
+def _random_generator(device, seed):
+    import torch
+
+    key = (str(device), int(seed))
+    gen = _RANDOM_GENERATORS.get(key)
+    if gen is None:
+        gen = torch.Generator(device=device)
+        gen.manual_seed(int(seed))
+        _RANDOM_GENERATORS[key] = gen
+    return gen
+
+
+def reset_random_generators() -> None:
+    _RANDOM_GENERATORS.clear()
 
 
 def _as_critic_list(critic):
@@ -83,6 +112,15 @@ def q_guided_velocity_smolvla_reverse_time(
         raise ValueError("QGuidanceConfig.uncertainty_scale must be non-negative.")
     if config.min_gate < 0 or config.min_gate > 1:
         raise ValueError("QGuidanceConfig.min_gate must be in [0, 1].")
+    if config.guidance_mode not in GUIDANCE_MODES:
+        raise ValueError(
+            f"QGuidanceConfig.guidance_mode must be one of {GUIDANCE_MODES}, "
+            f"got {config.guidance_mode!r}."
+        )
+    if config.guidance_mode == "random_matched_norm" and config.random_seed is None:
+        raise ValueError(
+            "random_matched_norm requires QGuidanceConfig.random_seed (no global RNG)."
+        )
 
     with torch.inference_mode(False), torch.enable_grad():
         action_t = action_t.detach().clone()
@@ -122,6 +160,18 @@ def q_guided_velocity_smolvla_reverse_time(
         grad = torch.autograd.grad(q_value.sum(), clean_action, create_graph=False)[0]
 
         raw_grad_norm = grad.reshape(grad.shape[0], -1).norm(dim=-1)
+        real_grad = grad
+        if config.guidance_mode == "random_matched_norm":
+            # Keep the real gradient's per-sample norm; replace only its direction.
+            # Done BEFORE clipping, so the clip and the gate see exactly what they
+            # would have seen for a real gradient of the same magnitude.
+            gen = _random_generator(grad.device, config.random_seed)
+            rand = torch.randn(
+                grad.shape, generator=gen, device=grad.device, dtype=grad.dtype
+            )
+            rand_norm = rand.reshape(rand.shape[0], -1).norm(dim=-1)
+            view_shape = (grad.shape[0],) + (1,) * (grad.ndim - 1)
+            grad = rand * (raw_grad_norm / (rand_norm + 1.0e-6)).reshape(view_shape)
         if config.grad_clip_norm is not None:
             max_norm = float(config.grad_clip_norm)
             scale = (max_norm / (raw_grad_norm + 1.0e-6)).clamp(max=1.0)
@@ -136,8 +186,18 @@ def q_guided_velocity_smolvla_reverse_time(
             gate = torch.ones_like(q_value)
         view_shape = (grad.shape[0],) + (1,) * (grad.ndim - 1)
         grad = grad * gate.reshape(view_shape)
+        if config.guidance_mode == "zero":
+            # B0-LM. The critic forward, the backward, the clip and the gate have
+            # all run above and are logged at their true values; only the APPLIED
+            # guidance is zeroed here, so timing and RNG consumption match "critic".
+            grad = torch.zeros_like(grad)
         guided_velocity = velocity_t - grad / config.beta
         guidance_delta = velocity_t - guided_velocity
+        flat_real = real_grad.detach().reshape(real_grad.shape[0], -1)
+        flat_used = grad.detach().reshape(grad.shape[0], -1)
+        direction_cos = torch.nn.functional.cosine_similarity(
+            flat_real, flat_used, dim=-1, eps=1.0e-12
+        )
 
     diagnostics = {
         "q_value_mean": q_value.detach().mean(),
@@ -150,6 +210,11 @@ def q_guided_velocity_smolvla_reverse_time(
         .reshape(guidance_delta.shape[0], -1)
         .norm(dim=-1)
         .mean(),
+        # 1.0 in critic mode, ~0 in random_matched_norm, 0 in zero.
+        "q_direction_cos_mean": direction_cos.mean(),
+        "q_guidance_mode": q_value.detach().new_tensor(
+            float(GUIDANCE_MODES.index(config.guidance_mode))
+        ),
     }
     return guided_velocity.detach(), diagnostics
 

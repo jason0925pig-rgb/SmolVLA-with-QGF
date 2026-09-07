@@ -6,12 +6,13 @@ policy server; the attended ROS client and its safety gates remain unchanged.
 """
 
 import os
+import torch
 from pathlib import Path
 
 import draccus
 
 from guided_action_flow.critics.checkpoint import load_action_chunk_critic
-from guided_action_flow.guidance.qgf import QGuidanceConfig
+from guided_action_flow.guidance.qgf import GUIDANCE_MODES, QGuidanceConfig
 from guided_action_flow.policies.smolvla_qgf import (
     SmolVLAVisualCriticAdapter,
     install_smolvla_qgf,
@@ -36,6 +37,29 @@ def _positive_env_float(name: str) -> float:
 class QGFPolicyServer(TelemetryPolicyServer):
     """Install exactly one visual Q critic after the policy is loaded."""
 
+    _qgf_chunk_counter = 0
+
+    def _get_action_chunk(self, observation):
+        # Per-chunk wall clock, so every arm carries a MEASURED latency rather
+        # than an assumed one. B0-LM's whole point is the timing comparison, and
+        # no QGF-on latency has ever been recorded on this robot.
+        import time as _time
+
+        t0 = _time.perf_counter()
+        chunk = super()._get_action_chunk(observation)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+        QGFPolicyServer._qgf_chunk_counter += 1
+        self.logger.info(
+            "QGF_CHUNK idx=%d infer_ms=%.1f mode=%s beta=%s",
+            QGFPolicyServer._qgf_chunk_counter,
+            elapsed_ms,
+            os.environ.get("SMOLVLA_QGF_GUIDANCE_MODE", "critic") or "critic",
+            os.environ.get("SMOLVLA_QGF_BETA", "?"),
+        )
+        return chunk
+
     def SendPolicyInstructions(self, request, context):  # noqa: N802
         response = super().SendPolicyInstructions(request, context)
         critic_path = Path(os.environ.get("SMOLVLA_QGF_CRITIC_PATH", ""))
@@ -46,6 +70,21 @@ class QGFPolicyServer(TelemetryPolicyServer):
             )
         beta = _positive_env_float("SMOLVLA_QGF_BETA")
         grad_clip_norm = _positive_env_float("SMOLVLA_QGF_GRAD_CLIP_NORM")
+        guidance_mode = (
+            os.environ.get("SMOLVLA_QGF_GUIDANCE_MODE", "critic").strip() or "critic"
+        )
+        if guidance_mode not in GUIDANCE_MODES:
+            raise RuntimeError(
+                "SMOLVLA_QGF_GUIDANCE_MODE must be one of "
+                f"{GUIDANCE_MODES}; got {guidance_mode!r}."
+            )
+        seed_text = os.environ.get("SMOLVLA_QGF_RANDOM_SEED", "").strip()
+        random_seed = int(seed_text) if seed_text else None
+        if guidance_mode == "random_matched_norm" and random_seed is None:
+            raise RuntimeError(
+                "SMOLVLA_QGF_RANDOM_SEED is required when "
+                "SMOLVLA_QGF_GUIDANCE_MODE=random_matched_norm."
+            )
         critic, metadata = load_action_chunk_critic(critic_path, device=self.device)
         if metadata.get("critic_arch") != "visual_transformer":
             raise RuntimeError(
@@ -63,13 +102,16 @@ class QGFPolicyServer(TelemetryPolicyServer):
                 grad_clip_norm=grad_clip_norm,
                 uncertainty_scale=0.0,
                 min_gate=0.0,
+                guidance_mode=guidance_mode,
+                random_seed=random_seed,
             ),
             critic_action_dim=8,
         )
         self.logger.info(
             "QGF single-critic guidance installed: "
             f"checkpoint={critic_path}; beta={beta:.8g}; coefficient=1/beta={1.0 / beta:.8g}; "
-            f"grad_clip_norm={grad_clip_norm:.8g}; uncertainty_gate=disabled"
+            f"grad_clip_norm={grad_clip_norm:.8g}; uncertainty_gate=disabled; "
+            f"guidance_mode={guidance_mode}; random_seed={random_seed}"
         )
         return response
 
