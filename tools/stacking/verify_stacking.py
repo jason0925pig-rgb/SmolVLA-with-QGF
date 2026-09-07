@@ -191,6 +191,19 @@ check(sp.get("validation_new_indices") == va, "seq_eval 兼容键存在且一致
 check(sp["task_text"] == TASK, "split_manifest 任务串一致")
 
 print()
+print("=== 8b. 留出集标记(info.json 的 splits 不可信)===")
+readme = CLEAN + "/HELDOUT_README.txt"
+if os.path.exists(readme):
+    txt = open(readme, encoding="utf-8").read()
+    listed = txt.split("Held-out episodes:")[1].split(chr(10))[0]
+    got = sorted(int(x) for x in listed.replace(",", " ").split())
+    check(got == sorted(va), "HELDOUT_README 的留出集与 split_manifest 一致",
+          "README %s vs manifest %s" % (got, sorted(va)))
+else:
+    warns.append("HELDOUT_README.txt 缺失 -- 该数据集由修复前的脚本生成")
+    print("  WARN  HELDOUT_README.txt 不存在(修复前生成的数据集会如此)")
+print("      info.json splits =", info.get("splits"), "<- 不是划分, 只是 LeRobot 格式字段")
+print()
 print("=== 9. SHA256 复算 ===")
 dec = pd.read_csv(RUN + "/manifest/episode_decisions.csv")
 keep = dec[dec["decision"] == "keep"]

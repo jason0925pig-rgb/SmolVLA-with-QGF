@@ -264,6 +264,15 @@ def main():
     info["total_tasks"] = 1
     if "total_videos" in info:
         info["total_videos"] = 2 * n_keep
+    # LeRobot's "splits" is a contiguous-range field, so the only value it can
+    # carry is 0:N -- it therefore labels the five held-out episodes as train.
+    # Worse, LeRobotDataset.__init__ loads the GLOBAL meta/stats.json regardless
+    # of --dataset.episodes, so a dataset whose stats were computed over all N
+    # would leak the holdout into normalisation no matter how the run is
+    # launched. This script computes those stats from TRAIN ONLY (below), which
+    # is what makes the holdout real. Nothing can make info.json honest, so a
+    # plain-text marker is written beside the data: split_manifest.json is the
+    # authority, info.json["splits"] is not.
     if "splits" in info:
         info["splits"] = {"train": "0:%d" % n_keep}
     (CLEAN / "meta/info.json").write_text(json.dumps(info, indent=4, ensure_ascii=False))
@@ -272,6 +281,17 @@ def main():
     n_val = 5 if n_keep >= 50 else max(1, n_keep // 10)
     val = sorted(rng.choice(np.arange(n_keep), size=n_val, replace=False).tolist())
     train = [i for i in range(n_keep) if i not in val]
+    _heldout_note = [
+        "Held-out episodes: " + ", ".join(str(i) for i in val),
+        "Train episodes   : the other " + str(len(train)),
+        "",
+        "meta/info.json says splits={\"train\": \"0:" + str(n_keep) + "\"}. That is a LeRobot",
+        "format limitation, NOT the split. Do not train on 0:" + str(n_keep) + ".",
+        "The authority is split_manifest.json in the parent run directory.",
+        "meta/stats.json was computed from the train episodes only.",
+        "",
+    ]
+    (CLEAN / "HELDOUT_README.txt").write_text(chr(10).join(_heldout_note))
     (RUN / "split_manifest.json").write_text(json.dumps(
         {"seed": 1000, "kept_episodes": n_keep, "task_text": TASK,
          "val": val, "train": train,
