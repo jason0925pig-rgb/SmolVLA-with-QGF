@@ -11,6 +11,10 @@ from guided_action_flow.critics.visual_transformer_critic import (
     VisualTransformerCritic,
     VisualTransformerCriticConfig,
 )
+from guided_action_flow.critics.state_action_transformer_critic import (
+    StateActionTransformerCritic,
+    StateActionTransformerCriticConfig,
+)
 
 __all__ = [
     "ActionChunkCritic",
@@ -19,5 +23,7 @@ __all__ = [
     "TransformerActionChunkCriticConfig",
     "VisualTransformerCritic",
     "VisualTransformerCriticConfig",
+    "StateActionTransformerCritic",
+    "StateActionTransformerCriticConfig",
     "load_action_chunk_critic",
 ]

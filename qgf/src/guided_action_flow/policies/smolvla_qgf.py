@@ -45,6 +45,22 @@ class SmolVLAVisualCriticAdapter:
         return self.critic.module(obs_features, self._visual_tokens, action_chunk)
 
 
+class SmolVLAStateActionCriticAdapter:
+    """Adapt a no-vision Q(s, action) critic to the generic QGF call signature.
+
+    This deliberately exposes no ``set_visual_tokens`` method, so the policy
+    processor skips the frozen SmolVLA image-token encoding for this ablation.
+    The base SmolVLA policy itself still receives its normal camera inputs.
+    """
+
+    def __init__(self, critic):
+        self.critic = critic
+
+    def __call__(self, *, obs_features, action_chunk, proprio=None, task_features=None):
+        del proprio, task_features
+        return self.critic.module(obs_features, action_chunk)
+
+
 def encode_smolvla_visual_tokens(policy, batch):
     """Encode the two deployed camera views exactly as offline IQL did."""
 

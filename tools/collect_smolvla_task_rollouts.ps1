@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("red_parcel", "stapler", "mug", "screwdriver")]
+    [ValidateSet("bottle_to_box_no_vision", "red_parcel", "stapler", "mug", "screwdriver", "stack_white_on_purple", "stack_white_on_purple_no_vision")]
     [string]$TaskProfile,
     [int]$EpisodeCount = 1,
     [ValidateSet("baseline", "qgf")]
@@ -25,6 +25,14 @@ if ($GripperOpenThreshold -lt 0.0 -or $GripperCloseThreshold -gt 1.0 -or $Grippe
 if ($GripperConfirmationFrames -lt 1) { throw "GripperConfirmationFrames must be at least 1." }
 
 $profiles = @{
+    bottle_to_box_no_vision = @{
+        Task = "把矿泉水放进纸箱里。"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_onearm_20k_20260805"
+        # Keep this ablation's future episodes separate from the historic
+        # Bottle-to-box source cohort used to train its critic.
+        DatasetRoot = "/home/nvidia/work/telop/bottle_to_box_no_vision_qgf_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf_input_ablation/bottle_to_box_no_vision_20260911/critic_member_00.pt"
+    }
     red_parcel = @{
         Task = "把箱子里的红色包裹拿出来放到桌子上。"
         Bundle = "/home/nvidia/work/telop/models/smolvla_20260828_red_parcel_clean"
@@ -37,6 +45,7 @@ $profiles = @{
         # the much wider 20-degree envelope used by the other task profiles.
         InitialPoseToleranceRad = "0.0872664625997165"
         Joint2MaxTargetErrorRad = "0.75"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf/red_parcel_single_q_45_5_20260902/critic_member_00.pt"
     }
     stapler = @{
         Task = "把订书机放进快递纸盒"
@@ -65,6 +74,27 @@ $profiles = @{
         Joint2MaxTargetErrorRad = "0.75"
         QCriticPath = "/home/nvidia/work/telop/models/qgf/screwdriver_into_box_single_q_45_5_20260906/critic_member_00.pt"
     }
+    stack_white_on_purple = @{
+        Task = "把白色盒子叠在紫色盒子上"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260907_stack_white_on_purple"
+        DatasetRoot = "/home/nvidia/work/telop/stack_white_on_purple_real_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf/stack_white_on_purple_single_q_45_5_20260908/critic_member_00.pt"
+        # The 50 demonstrations are a verified single negative-J5 branch; send
+        # the same raw observation coordinates to the policy that it saw in training.
+        CanonicalizePolicyObservation = "false"
+        InitialPoseToleranceRad = "0.3490658503988659"
+        Joint2MaxTargetErrorRad = "0.75"
+    }
+    stack_white_on_purple_no_vision = @{
+        Task = "把白色盒子叠在紫色盒子上"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260907_stack_white_on_purple"
+        # Do not mix no-vision-Q ablation outcomes with full-Q results.
+        DatasetRoot = "/home/nvidia/work/telop/stack_white_on_purple_no_vision_qgf_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf_input_ablation/stack_white_on_purple_no_vision_20260911/critic_member_00.pt"
+        CanonicalizePolicyObservation = "false"
+        InitialPoseToleranceRad = "0.3490658503988659"
+        Joint2MaxTargetErrorRad = "0.75"
+    }
 }
 
 $profile = $profiles[$TaskProfile]
@@ -75,7 +105,7 @@ $betaText = $Beta.ToString($culture)
 $taskBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($profile.Task))
 $qCriticPath = if ($profile.ContainsKey("QCriticPath")) { $profile.QCriticPath } else { "" }
 if ($Mode -eq "qgf" -and [string]::IsNullOrWhiteSpace($qCriticPath)) {
-    throw "Task profile '$TaskProfile' has no task-matched Q critic. QGF mode is currently available only for mug."
+    throw "Task profile '$TaskProfile' has no task-matched Q critic configured."
 }
 $comparisonTag = if ($TaskProfile -eq "mug" -and $Condition -eq "medium_light") { "lighting=medium" } else { "${TaskProfile}_${Condition}" }
 $conditionMetadata = if ($TaskProfile -eq "mug" -and $Condition -eq "medium_light") { "lighting=medium" } else { "condition=$Condition" }
