@@ -23,5 +23,5 @@ set -u
 }
 
 cd "${SMOLVLA_ORIN_BUNDLE}"
-export PYTHONPATH="${PROJECT_ROOT}/qgf/src:${PYTHONPATH:-}"
+export PYTHONPATH="${PROJECT_ROOT}/lerobot_robot_armstrong_ros2/src:${PROJECT_ROOT}/qgf/src:${PYTHONPATH:-}"
 exec "${PROJECT_ROOT}/tools/start_smolvla_policy_server.sh"
