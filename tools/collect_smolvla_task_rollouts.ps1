@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("bottle_to_box_no_vision", "bottle_to_box_no_state", "red_parcel", "stapler", "mug", "screwdriver", "stack_white_on_purple", "stack_white_on_purple_no_vision")]
+    [ValidateSet("bottle_to_box_no_vision", "bottle_to_box_no_state", "red_parcel", "stapler", "mug", "screwdriver", "stack_white_on_purple", "stack_white_on_purple_no_vision", "stack_white_on_purple_no_state")]
     [string]$TaskProfile,
     [int]$EpisodeCount = 1,
     [ValidateSet("baseline", "qgf")]
@@ -104,6 +104,17 @@ $profiles = @{
         InitialPoseToleranceRad = "0.3490658503988659"
         Joint2MaxTargetErrorRad = "0.75"
     }
+    stack_white_on_purple_no_state = @{
+        Task = "把白色盒子叠在紫色盒子上"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_20260907_stack_white_on_purple"
+        # Keep visual/action-only critic outcomes separate from full-Q and
+        # state/action-only critic ablations.
+        DatasetRoot = "/home/nvidia/work/telop/stack_white_on_purple_no_state_qgf_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf_input_ablation/stack_white_on_purple_no_state_20260913/critic_member_00.pt"
+        CanonicalizePolicyObservation = "false"
+        InitialPoseToleranceRad = "0.3490658503988659"
+        Joint2MaxTargetErrorRad = "0.75"
+    }
 }
 
 $profile = $profiles[$TaskProfile]
@@ -138,7 +149,7 @@ $joint2MaxTargetErrorRad = if ($profile.ContainsKey("Joint2MaxTargetErrorRad")) 
 }
 $remoteProject = if (-not [string]::IsNullOrWhiteSpace($RemoteProject)) {
     $RemoteProject
-} elseif ($TaskProfile -eq "bottle_to_box_no_state") {
+} elseif ($TaskProfile -in @("bottle_to_box_no_state", "stack_white_on_purple_no_state")) {
     "/home/nvidia/work/telop/SmolVLA-with-QGF-no-state-20260913"
 } else {
     "/home/nvidia/work/telop/SmolVLA-with-QGF"
