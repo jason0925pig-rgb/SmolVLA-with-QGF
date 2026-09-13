@@ -15,6 +15,7 @@ from guided_action_flow.critics.checkpoint import load_action_chunk_critic
 from guided_action_flow.guidance.qgf import GUIDANCE_MODES, QGuidanceConfig
 from guided_action_flow.policies.smolvla_qgf import (
     SmolVLAStateActionCriticAdapter,
+    SmolVLAVisualActionCriticAdapter,
     SmolVLAVisualCriticAdapter,
     install_smolvla_qgf,
 )
@@ -86,18 +87,19 @@ class QGFPolicyServer(TelemetryPolicyServer):
             )
         critic, metadata = load_action_chunk_critic(critic_path, device=self.device)
         critic_arch = metadata.get("critic_arch")
-        if critic_arch not in {"visual_transformer", "state_action_transformer"}:
+        if critic_arch not in {"visual_transformer", "state_action_transformer", "visual_action_transformer"}:
             raise RuntimeError(
-                "The real-robot QGF server requires visual_transformer or "
+                "The real-robot QGF server requires visual_transformer, visual_action_transformer, or "
                 f"state_action_transformer critic, not {critic_arch!r}."
             )
         if int(metadata["critic_config"]["action_dim"]) != 8:
             raise RuntimeError("The deployed Armstrong critic must use eight action channels.")
-        adapter = (
-            SmolVLAVisualCriticAdapter(critic)
-            if critic_arch == "visual_transformer"
-            else SmolVLAStateActionCriticAdapter(critic)
-        )
+        if critic_arch == "visual_transformer":
+            adapter = SmolVLAVisualCriticAdapter(critic)
+        elif critic_arch == "visual_action_transformer":
+            adapter = SmolVLAVisualActionCriticAdapter(critic)
+        else:
+            adapter = SmolVLAStateActionCriticAdapter(critic)
         install_smolvla_qgf(
             self.policy,
             critic=adapter,

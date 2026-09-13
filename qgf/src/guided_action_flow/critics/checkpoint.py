@@ -20,6 +20,10 @@ def load_action_chunk_critic(checkpoint_path, *, device="cpu"):
         StateActionTransformerCritic,
         StateActionTransformerCriticConfig,
     )
+    from guided_action_flow.critics.visual_action_transformer_critic import (
+        VisualActionTransformerCritic,
+        VisualActionTransformerCriticConfig,
+    )
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     critic_arch = checkpoint.get("critic_arch", "mlp")
@@ -35,6 +39,9 @@ def load_action_chunk_critic(checkpoint_path, *, device="cpu"):
     elif critic_arch == "state_action_transformer":
         config = StateActionTransformerCriticConfig(**checkpoint["critic_config"])
         critic = StateActionTransformerCritic(config)
+    elif critic_arch == "visual_action_transformer":
+        config = VisualActionTransformerCriticConfig(**checkpoint["critic_config"])
+        critic = VisualActionTransformerCritic(config)
     else:
         raise ValueError(f"Unsupported critic_arch={critic_arch!r}.")
     critic.load_state_dict(checkpoint["model_state_dict"])

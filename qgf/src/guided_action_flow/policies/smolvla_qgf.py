@@ -45,6 +45,30 @@ class SmolVLAVisualCriticAdapter:
         return self.critic.module(obs_features, self._visual_tokens, action_chunk)
 
 
+class SmolVLAVisualActionCriticAdapter:
+    """Adapt the no-state Q(visual tokens, action) ablation to QGF.
+
+    The base policy still receives state.  This adapter deliberately ignores
+    it, so the critic can only rank candidate chunks using current camera
+    tokens and the candidate action chunk.
+    """
+
+    def __init__(self, critic):
+        self.critic = critic
+        self._visual_tokens = None
+
+    def set_visual_tokens(self, visual_tokens) -> None:
+        self._visual_tokens = visual_tokens.detach()
+
+    def __call__(self, *, obs_features, action_chunk, proprio=None, task_features=None):
+        del obs_features, proprio, task_features
+        if self._visual_tokens is None:
+            raise RuntimeError("QGF visual tokens were not prepared for this observation.")
+        if self._visual_tokens.shape[0] != action_chunk.shape[0]:
+            raise RuntimeError("QGF visual-token batch size does not match action chunk.")
+        return self.critic.module(self._visual_tokens, action_chunk)
+
+
 class SmolVLAStateActionCriticAdapter:
     """Adapt a no-vision Q(s, action) critic to the generic QGF call signature.
 

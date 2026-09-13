@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("bottle_to_box_no_vision", "red_parcel", "stapler", "mug", "screwdriver", "stack_white_on_purple", "stack_white_on_purple_no_vision")]
+    [ValidateSet("bottle_to_box_no_vision", "bottle_to_box_no_state", "red_parcel", "stapler", "mug", "screwdriver", "stack_white_on_purple", "stack_white_on_purple_no_vision")]
     [string]$TaskProfile,
     [int]$EpisodeCount = 1,
     [ValidateSet("baseline", "qgf")]
@@ -32,6 +32,14 @@ $profiles = @{
         # Bottle-to-box source cohort used to train its critic.
         DatasetRoot = "/home/nvidia/work/telop/bottle_to_box_no_vision_qgf_rollouts"
         QCriticPath = "/home/nvidia/work/telop/models/qgf_input_ablation/bottle_to_box_no_vision_20260911/critic_member_00.pt"
+    }
+    bottle_to_box_no_state = @{
+        Task = "把矿泉水放进纸箱里。"
+        Bundle = "/home/nvidia/work/telop/models/smolvla_onearm_20k_20260805"
+        # Keep this visual/action-only critic ablation separate from full-Q and
+        # state/action-only critic outcomes.
+        DatasetRoot = "/home/nvidia/work/telop/bottle_to_box_no_state_qgf_rollouts"
+        QCriticPath = "/home/nvidia/work/telop/models/qgf_input_ablation/bottle_to_box_no_state_20260913/critic_member_00.pt"
     }
     red_parcel = @{
         Task = "把箱子里的红色包裹拿出来放到桌子上。"
