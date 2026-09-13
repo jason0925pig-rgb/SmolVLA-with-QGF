@@ -3,12 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+# Kept in this shared runtime module because the policy server validates its
+# environment-selected guidance mode before it installs a critic.
+GUIDANCE_MODES = ("critic", "random_matched_norm", "zero")
+
+
 @dataclass(frozen=True)
 class QGuidanceConfig:
     beta: float = 10.0
     grad_clip_norm: float | None = 1.0
     uncertainty_scale: float = 0.0
     min_gate: float = 0.0
+    guidance_mode: str = "critic"
+    random_seed: int | None = None
 
 
 def _as_critic_list(critic):
